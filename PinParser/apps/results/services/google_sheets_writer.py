@@ -45,16 +45,23 @@ class GoogleSheetsWriter:
         return sheet_id
 
     def _get_or_create_sheet(self, task: ParseTask) -> str:
-        if task.table_name:
-            return task.table_name
+        # If task already has a table_name (spreadsheetId), use it
+        if task.table_name and len(task.table_name) > 20: # simple check if it looks like an ID
+             return task.table_name
 
-        spreadsheet = self.service.spreadsheets().create(
-            body={
-                "properties": {
-                    "title": task.name or f"Task {task.id}"
+        title = task.name
+        if task.auto_sheet_name:
+            title = f"Pinterest Results - {task.name} - {task.created_at.strftime('%Y-%m-%d %H:%M')}"
+
+        spreadsheet = self._execute_with_retry(
+            self.service.spreadsheets().create(
+                body={
+                    "properties": {
+                        "title": title
+                    }
                 }
-            }
-        ).execute()
+            )
+        )
 
         sheet_id = spreadsheet["spreadsheetId"]
 
@@ -62,20 +69,39 @@ class GoogleSheetsWriter:
         task.save(update_fields=["table_name"])
 
         logger.info(
-            f"[SHEETS] Created sheet for task #{task.id}"
+            f"[SHEETS] Created sheet '{title}' (ID: {sheet_id}) for task #{task.id}"
         )
 
         return sheet_id
 
+    def _execute_with_retry(self, request, max_retries=3):
+        import time
+        import random
+        from googleapiclient.errors import HttpError
+
+        for i in range(max_retries):
+            try:
+                return request.execute()
+            except HttpError as e:
+                if e.resp.status in [429, 500, 503]:
+                    wait = (2 ** i) + random.random()
+                    logger.warning(f"[SHEETS] Quota or server error, retrying in {wait:.2f}s...")
+                    time.sleep(wait)
+                else:
+                    raise
+        return request.execute()
+
     def _write_headers(self, sheet_id: str):
-        self.service.spreadsheets().values().update(
-            spreadsheetId=sheet_id,
-            range="A1",
-            valueInputOption="RAW",
-            body={
-                "values": [self.HEADERS]
-            }
-        ).execute()
+        self._execute_with_retry(
+            self.service.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range="A1",
+                valueInputOption="RAW",
+                body={
+                    "values": [self.HEADERS]
+                }
+            )
+        )
 
     def _write_rows(self, sheet_id: str, task: ParseTask):
         batch_size = settings.GOOGLE_SHEETS_BATCH_SIZE
@@ -109,12 +135,14 @@ class GoogleSheetsWriter:
             self._append(sheet_id, rows)
 
     def _append(self, sheet_id: str, rows: list[list]):
-        self.service.spreadsheets().values().append(
-            spreadsheetId=sheet_id,
-            range="A2",
-            valueInputOption="RAW",
-            insertDataOption="INSERT_ROWS",
-            body={
-                "values": rows
-            }
-        ).execute()
+        self._execute_with_retry(
+            self.service.spreadsheets().values().append(
+                spreadsheetId=sheet_id,
+                range="A2",
+                valueInputOption="RAW",
+                insertDataOption="INSERT_ROWS",
+                body={
+                    "values": rows
+                }
+            )
+        )

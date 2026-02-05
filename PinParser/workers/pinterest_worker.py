@@ -7,118 +7,73 @@ from playwright.async_api import Error as PlaywrightError
 from workers.browser_factory import BrowserFactory
 
 
-
-SCROLL_PAUSE_RANGE = (0.8, 1.4)
-MAX_SCROLLS_PER_PAGE = 200
-SCROLLS_PER_ROUND = 2
-MAX_SAME_HEIGHT = 5
+SCROLL_PAUSE_RANGE = (1.0, 2.5)
+MAX_SCROLLS_PER_PAGE = 100
+MAX_SAME_HEIGHT = 6
 
 
 class PinterestWorker:
     def __init__(self, account, headless=True):
         self.account = account
+        self.headless = headless
         self.factory = BrowserFactory(account, headless=headless)
 
-        self.pin_urls_by_keyword: dict[str, set[str]] = {}
-
-        self.global_pin_urls: set[str] = set()
-
-        self.pages = {}
-
-    async def collect_pin_urls(self, keywords: list[str]) -> dict:
+    async def collect_urls_for_keyword(self, keyword: str) -> set[str]:
+        """
+        Collects pin URLs for a single keyword.
+        """
         playwright, browser, context = await self.factory.launch()
+        pin_urls = set()
 
         try:
-            for keyword in keywords:
-                page = await context.new_page()
+            page = await context.new_page()
 
-                await page.goto(
-                    f"https://www.pinterest.com/search/pins/?q={keyword}",
-                    timeout=60_000
-                )
+            # User-Agent rotation is already in BrowserFactory
 
-                height = await page.evaluate("document.body.scrollHeight")
+            logger.info(f"[{keyword}] Starting search")
+            await page.goto(
+                f"https://www.pinterest.com/search/pins/?q={keyword}",
+                timeout=60_000,
+                wait_until="networkidle"
+            )
 
-                self.pin_urls_by_keyword[keyword] = set()
+            last_height = await page.evaluate("document.body.scrollHeight")
+            same_height_count = 0
+            scrolls = 0
 
-                self.pages[keyword] = {
-                    "page": page,
-                    "scrolls": 0,
-                    "pins": self.pin_urls_by_keyword[keyword],
-                    "last_height": height,
-                    "same_height": 0,
-                    "done": False,
-                }
+            while scrolls < MAX_SCROLLS_PER_PAGE:
+                await self._extract_pins(page, pin_urls)
 
-            active = True
-            while active:
-                active = False
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await asyncio.sleep(random.uniform(*SCROLL_PAUSE_RANGE))
 
-                for keyword, data in self.pages.items():
-                    if data["done"]:
-                        continue
+                new_height = await self._safe_get_scroll_height(page)
+                if new_height is None:
+                    break
 
-                    if data["scrolls"] >= MAX_SCROLLS_PER_PAGE:
-                        data["done"] = True
-                        continue
+                if new_height == last_height:
+                    same_height_count += 1
+                else:
+                    same_height_count = 0
+                    last_height = new_height
 
-                    page = data["page"]
-                    await page.bring_to_front()
+                scrolls += 1
 
-                    for _ in range(SCROLLS_PER_ROUND):
-                        await self._extract_pins(page, data["pins"])
+                if same_height_count >= MAX_SAME_HEIGHT:
+                    logger.info(f"[{keyword}] Reached end of page after {scrolls} scrolls")
+                    break
 
-                        await page.evaluate(
-                            "window.scrollTo(0, document.body.scrollHeight)"
-                        )
-                        await asyncio.sleep(random.uniform(*SCROLL_PAUSE_RANGE))
+            if not pin_urls:
+                logger.warning(f"[{keyword}] No pins collected. Possible block or empty search.")
 
-                        current_height = await self._safe_get_scroll_height(page)
-
-                        if current_height == data["last_height"]:
-                            data["same_height"] += 1
-                        else:
-                            data["same_height"] = 0
-                            data["last_height"] = current_height
-
-                        data["scrolls"] += 1
-                        active = True
-
-                        if data["same_height"] >= MAX_SAME_HEIGHT:
-                            logger.info(
-                                f"[{keyword}] No more content, stopping scroll"
-                            )
-                            data["done"] = True
-                            break
-
-            for keyword, urls in self.pin_urls_by_keyword.items():
-                for url in urls:
-                    self.global_pin_urls.add(url)
-
+        except Exception as e:
+            logger.error(f"[{keyword}] Error during collection: {e}")
         finally:
-            for data in self.pages.values():
-                await data["page"].close()
-
             await browser.close()
             await playwright.stop()
 
-        logger.info(
-            f"Collected {len(self.global_pin_urls)} unique pin URLs "
-            f"from {len(keywords)} keywords"
-        )
+        return pin_urls
 
-        return {
-            "by_keyword": self.pin_urls_by_keyword,
-            "all": self.global_pin_urls,
-        }
-    
-    def collect_pin_urls_with_keywords(
-        self,
-        keywords: list[str],
-    ) -> dict[str, set[str]]:
-        results = asyncio.run(self.collect_pin_urls(keywords))
-        return results
-    
     async def _safe_get_scroll_height(self, page) -> int | None:
         try:
             return await page.evaluate("document.body.scrollHeight")
@@ -126,22 +81,22 @@ class PinterestWorker:
             return None
 
     async def _extract_pins(self, page, bucket: set[str]):
-        links = await page.query_selector_all("a[href^='/pin/']")
-
-        for link in links:
-            href = await link.get_attribute("href")
-            if not href:
-                continue
-
-            bucket.add(self._normalize_pin_url(href))
+        try:
+            links = await page.query_selector_all("a[href^='/pin/']")
+            for link in links:
+                href = await link.get_attribute("href")
+                if href:
+                    normalized = self._normalize_pin_url(href)
+                    if normalized:
+                        bucket.add(normalized)
+        except PlaywrightError:
+            pass
 
     @staticmethod
-    def _normalize_pin_url(href: str) -> str:
+    def _normalize_pin_url(href: str) -> str | None:
         parsed = urlparse(href)
         parts = parsed.path.strip("/").split("/")
-
-        if len(parts) < 2:
-            return None
-
-        pin_id = parts[1]
-        return f"https://www.pinterest.com/pin/{pin_id}/"
+        if len(parts) >= 2 and parts[0] == 'pin':
+            pin_id = parts[1]
+            return f"https://www.pinterest.com/pin/{pin_id}/"
+        return None

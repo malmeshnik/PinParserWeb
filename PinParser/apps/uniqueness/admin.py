@@ -1,8 +1,10 @@
 from django.contrib import admin
 from .models import UniquenessConfig
 
-
 @admin.register(UniquenessConfig)
 class UniquenessConfigAdmin(admin.ModelAdmin):
-    list_display = ("id", "model", "is_active", "max_workers")
-    list_filter = ("is_active",)
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
+    list_display = ('id', 'is_active', 'model', 'created_at')
+    list_editable = ('is_active',)

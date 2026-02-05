@@ -22,9 +22,17 @@ class UniquenessConfig(models.Model):
 
     prompt_template = models.TextField(
         verbose_name="Промпт",
+        default=(
+            "Uniquify the following Pinterest pin content. "
+            "Return ONLY a JSON object with 'title' and 'description' keys.\n\n"
+            "Original Title: {{title}}\n"
+            "Original Description: {{description}}\n"
+            "Alt Text: {{alt_text}}\n"
+            "Annotation: {{annotation}}\n"
+        ),
         help_text=(
             "Доступні змінні:\n"
-            "{{title}}, {{description}}, {{alt_text}}, {{annotation}}, {{domain}}"
+            "{{title}}, {{description}}, {{alt_text}}, {{annotation}}, {{domain}}, {{image_url}}"
         ),
     )
 
@@ -33,6 +41,7 @@ class UniquenessConfig(models.Model):
     use_alt_text = models.BooleanField(default=True)
     use_annotation = models.BooleanField(default=True)
     use_domain = models.BooleanField(default=False)
+    use_image_url = models.BooleanField(default=False)
 
     max_requests_per_minute = models.PositiveSmallIntegerField(
         default=450,

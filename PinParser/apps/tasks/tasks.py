@@ -14,45 +14,26 @@ def run_parse_task(self, task_id: int):
     task = ParseTask.objects.get(id=task_id)
 
     try:
-        task.status = TaskStatus.RUNNING
-        task.started_at = timezone.now()
-        task.celery_task_id = self.request.id
-        task.save(update_fields=[
-            "status", "started_at", "celery_task_id"
-        ])
-        account = PinterestAccount.objects.first()
+        task.mark_running(self.request.id)
 
         pipeline = PinterestParsePipeline(
             task=task,
-            account=account,
-            max_pins=None,
+            headless=True,
         )
 
         parsed_count = pipeline.run()
+        task.mark_success(parsed_count)
 
-        task.status = TaskStatus.DONE
-        task.finished_at = timezone.now()
-        task.processed_urls = parsed_count
-        task.save(update_fields=[
-            "status", "finished_at", "processed_urls"
-        ])
-
+        # Post-processing chain
         if task.use_uniqueness:
-            run_uniqueness.delay(task.id)
-            generate_slugs.delay(task.id)
-
-        export_results_to_sheets.delay(task.id)
+            # We chain uniqueness -> slug generation -> sheets export
+            (run_uniqueness.s(task.id) | generate_slugs.si(task.id) | export_results_to_sheets.si(task.id)).apply_async()
+        else:
+            export_results_to_sheets.delay(task.id)
 
         return {"parsed": parsed_count}
 
     except Exception as e:
-        logger.exception("Parse task failed")
-
-        task.status = TaskStatus.ERROR
-        task.error_message = str(e)[:5000]
-        task.finished_at = timezone.now()
-        task.save(update_fields=[
-            "status", "error_message", "finished_at"
-        ])
-
+        logger.exception(f"Parse task {task_id} failed")
+        task.mark_failed(str(e))
         raise

@@ -20,18 +20,15 @@ USER_AGENTS = [
 class PinFetcher:
     def __init__(
         self,
-        proxy: Optional[Proxy] = None,
-        cookies: Optional[list[dict]] = None,
+        account,
         timeout: int = 20,
-        max_retries: int = 3,
+        max_retries: int = 2,
         delay_range: tuple[float, float] = (1.0, 3.0),
     ):
-        self.proxy = proxy
-        self.cookies = cookies or []
+        self.account = account
         self.timeout = timeout
         self.max_retries = max_retries
         self.delay_range = delay_range
-
         self.session = requests.Session()
         self._prepare_session()
 
@@ -47,6 +44,10 @@ class PinFetcher:
                 if self._is_valid_response(response):
                     return response.text
 
+                if response.status_code == 403 or response.status_code == 429:
+                    logger.warning(f"[PIN FETCH] Blocked ({response.status_code}). Rotating UA/Proxy/Cookie...")
+                    self._rotate_everything()
+
                 logger.warning(
                     f"[PIN FETCH] Bad response "
                     f"{response.status_code} | {pin_url}"
@@ -56,11 +57,26 @@ class PinFetcher:
                 logger.warning(
                     f"[PIN FETCH] Attempt {attempt} failed | {e}"
                 )
+                self._rotate_everything()
 
             time.sleep(random.uniform(*self.delay_range))
 
         logger.error(f"[PIN FETCH] Failed after retries | {pin_url}")
         return None
+
+    def _rotate_everything(self):
+        # Rotate User-Agent
+        self.session.headers.update({"User-Agent": random.choice(USER_AGENTS)})
+
+        # Rotate Proxy for account
+        if self.account:
+            if self.account.rotate_proxy():
+                proxy_url = f"http://{self.account.proxy.host}:{self.account.proxy.port}"
+                self.session.proxies.update({
+                    "http": proxy_url,
+                    "https": proxy_url,
+                })
+                logger.info(f"[PIN FETCH] Rotated to new proxy: {proxy_url}")
     
     def _prepare_session(self):
         self.session.headers.update({
@@ -73,19 +89,20 @@ class PinFetcher:
             "Connection": "keep-alive",
         })
 
-        for cookie in self.cookies:
-            try:
-                self.session.cookies.set(
-                    name=cookie.get("name"),
-                    value=cookie.get("value"),
-                    domain=cookie.get("domain"),
-                    path=cookie.get("path", "/"),
-                )
-            except Exception:
-                continue
+        if self.account and self.account.cookies:
+            for cookie in self.account.cookies:
+                try:
+                    self.session.cookies.set(
+                        name=cookie.get("name"),
+                        value=cookie.get("value"),
+                        domain=cookie.get("domain"),
+                        path=cookie.get("path", "/"),
+                    )
+                except Exception:
+                    continue
 
-        if self.proxy:
-            proxy_url = f"http://{self.proxy.host}:{self.proxy.port}"
+        if self.account and self.account.proxy:
+            proxy_url = f"http://{self.account.proxy.host}:{self.account.proxy.port}"
             self.session.proxies.update({
                 "http": proxy_url,
                 "https": proxy_url,

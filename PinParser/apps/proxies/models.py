@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 # Create your models here.
@@ -64,3 +65,27 @@ class Proxy(models.Model):
 
     def __str__(self):
         return f"Проксі №{self.id} - {self.name}"
+
+    def check_health(self):
+        import requests
+        proxy_url = f"http://{self.host}:{self.port}"
+        try:
+            resp = requests.get(
+                "https://www.google.com",
+                proxies={"http": proxy_url, "https": proxy_url},
+                timeout=10
+            )
+            if resp.status_code == 200:
+                self.status = ProxyStatus.ACTIVE
+                self.fail_count = 0
+            else:
+                self.fail_count += 1
+        except Exception:
+            self.fail_count += 1
+
+        if self.fail_count >= 3:
+            self.status = ProxyStatus.DEAD
+
+        self.last_checked_at = timezone.now()
+        self.save(update_fields=['status', 'fail_count', 'last_checked_at'])
+        return self.status == ProxyStatus.ACTIVE

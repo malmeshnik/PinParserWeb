@@ -58,3 +58,16 @@ class PinterestAccount(models.Model):
 
     def __str__(self):
         return f"Аккаунт №{self.id} - {self.name}"
+
+    def rotate_proxy(self):
+        from apps.proxies.models import Proxy, ProxyStatus
+        new_proxy = Proxy.objects.filter(
+            is_active=True,
+            status=ProxyStatus.ACTIVE
+        ).exclude(id=self.proxy_id if self.proxy else None).order_by('?').first()
+
+        if new_proxy:
+            self.proxy = new_proxy
+            self.save(update_fields=['proxy'])
+            return True
+        return False
