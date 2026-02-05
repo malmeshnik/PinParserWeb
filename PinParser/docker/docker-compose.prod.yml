@@ -2,30 +2,26 @@ services:
   db:
     image: postgres:15-alpine
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_prod:/var/lib/postgresql/data
     environment:
-      - POSTGRES_DB=${DB_NAME:-pinparser}
-      - POSTGRES_USER=${DB_USER:-pinuser}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-pinpass}
-    ports:
-      - "5432:5432"
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    restart: always
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: always
 
   web:
     build:
       context: ..
       dockerfile: docker/django.DockerFile
-    command: python manage.py runserver 0.0.0.0:8000
-    volumes:
-      - ..:/app
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
     ports:
-      - "8000:8000"
+      - "80:8000"
     environment:
-      - DEBUG=True
+      - DEBUG=False
       - DB_HOST=db
       - REDIS_URL=redis://redis:6379/0
     depends_on:
@@ -33,16 +29,15 @@ services:
       - redis
     env_file:
       - ../.env
+    restart: always
 
   worker:
     build:
       context: ..
       dockerfile: docker/worker.DockerFile
-    command: celery -A config worker -l info
-    volumes:
-      - ..:/app
+    command: celery -A config worker -l info --concurrency=4
     environment:
-      - DEBUG=True
+      - DEBUG=False
       - DB_HOST=db
       - REDIS_URL=redis://redis:6379/0
     depends_on:
@@ -50,6 +45,7 @@ services:
       - redis
     env_file:
       - ../.env
+    restart: always
 
 volumes:
-  postgres_data:
+  postgres_data_prod:
