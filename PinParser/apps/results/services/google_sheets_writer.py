@@ -6,8 +6,10 @@ from loguru import logger
 from apps.results.models import PinResult
 from apps.tasks.models import ParseTask
 
-
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 
 
 class GoogleSheetsWriter:
@@ -33,9 +35,9 @@ class GoogleSheetsWriter:
             settings.GOOGLE_SERVICE_ACCOUNT_FILE,
             scopes=SCOPES,
         )
-        print(settings.GOOGLE_SERVICE_ACCOUNT_FILE)
 
         self.service = build("sheets", "v4", credentials=creds)
+        self.drive_service = build("drive", "v3", credentials=creds)
 
     def write_task_results(self, task: ParseTask):
         sheet_id = self._get_or_create_sheet(task)
@@ -64,6 +66,17 @@ class GoogleSheetsWriter:
         )
 
         sheet_id = spreadsheet["spreadsheetId"]
+
+        self._execute_with_retry(
+            self.drive_service.permissions().create(
+                fileId=sheet_id,
+                body={
+                    "type": "user",
+                    "role": "writer",
+                    "emailAddress": "you@gmail.com"
+                }
+            )
+        )
 
         task.table_name = sheet_id
         task.save(update_fields=["table_name"])
@@ -124,7 +137,7 @@ class GoogleSheetsWriter:
                 pin.annotation,
                 pin.saves,
                 pin.pinner_username,
-                pin.creation_date,
+                pin.creation_date.strftime("%Y-%m-%d %H:%M:%S"),
             ])
 
             if len(rows) >= batch_size:

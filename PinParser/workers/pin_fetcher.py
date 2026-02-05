@@ -65,10 +65,8 @@ class PinFetcher:
         return None
 
     def _rotate_everything(self):
-        # Rotate User-Agent
         self.session.headers.update({"User-Agent": random.choice(USER_AGENTS)})
 
-        # Rotate Proxy for account
         if self.account:
             if self.account.rotate_proxy():
                 proxy_url = f"http://{self.account.proxy.host}:{self.account.proxy.port}"
@@ -89,19 +87,7 @@ class PinFetcher:
             "Connection": "keep-alive",
         })
 
-        if self.account and self.account.cookies:
-            for cookie in self.account.cookies:
-                try:
-                    self.session.cookies.set(
-                        name=cookie.get("name"),
-                        value=cookie.get("value"),
-                        domain=cookie.get("domain"),
-                        path=cookie.get("path", "/"),
-                    )
-                except Exception:
-                    continue
-
-        if self.account and self.account.proxy:
+        if self.account.proxy:
             proxy_url = f"http://{self.account.proxy.host}:{self.account.proxy.port}"
             self.session.proxies.update({
                 "http": proxy_url,

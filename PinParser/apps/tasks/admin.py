@@ -4,6 +4,7 @@ from django.utils.html import format_html
 from django import forms
 from .models import ParseTask, TaskStatus
 from .tasks import run_parse_task
+from apps.results.tasks import export_results_to_sheets
 
 class ParseTaskForm(forms.ModelForm):
     keywords_text = forms.CharField(
@@ -34,12 +35,63 @@ class ParseTaskForm(forms.ModelForm):
 @admin.register(ParseTask)
 class ParseTaskAdmin(admin.ModelAdmin):
     form = ParseTaskForm
-    list_display = ('id', 'name', 'owner', 'status', 'progress_display', 'total_urls', 'view_results_link', 'created_at')
+    list_display = ('name', 'owner', 'status_badge', 'progress_display', 'error_message', 'view_results_link', 'created_at')
     list_filter = ('status', 'created_at', 'use_uniqueness')
     search_fields = ('name', 'keywords')
     exclude = ('keywords', 'celery_task_id')
 
-    actions = ['start_task', 'stop_task']
+    readonly_fields = (
+        "error_message",
+        "started_at",
+        "finished_at",
+        "processed_urls",
+        "total_urls",
+    )
+
+    fieldsets = (
+        ("Основне", {
+            "fields": ("name", "keywords_text", "threads")
+        }),
+        ("Опції", {
+            "fields": ("use_uniqueness",)
+        }),
+        ("Статус", {
+            "fields": (
+                "status",
+                "error_message",
+                "processed_urls",
+                "total_urls",
+            )
+        }),
+        ("Дати", {
+            "fields": ("started_at", "finished_at")
+        }),
+    )
+
+    actions = [
+        "start_task",
+        "stop_task",
+        "export_to_sheets",
+        "run_uniqueness_action",
+    ]
+
+    def status_badge(self, obj):
+        colors = {
+            TaskStatus.PENDING: "#999",
+            TaskStatus.RUNNING: "#0d6efd",
+            TaskStatus.DONE: "#198754",
+            TaskStatus.ERROR: "#dc3545",
+            TaskStatus.STOPPED: "#ffc107",
+        }
+        return format_html(
+            '<b style="color:{}">{}</b>',
+            colors.get(obj.status, "#000"),
+            obj.get_status_display().upper(),
+        )
+    status_badge.short_description = "Статус"
+
+
+    actions = ['start_task', 'stop_task', 'export_to_sheets']
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -75,3 +127,8 @@ class ParseTaskAdmin(admin.ModelAdmin):
         queryset.update(status=TaskStatus.STOPPED)
         self.message_user(request, "Завдання зупинені")
     stop_task.short_description = "⏹️ Зупинити вибрані завдання"
+
+    @admin.action(description="📤 Експорт у Google Sheets")
+    def export_to_sheets(self, request, queryset):
+        for task in queryset:
+            export_results_to_sheets.delay(task.id)

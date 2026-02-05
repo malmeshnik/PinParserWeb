@@ -3,12 +3,10 @@ services:
     image: postgres:15-alpine
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=${DB_NAME:-pinparser}
-      - POSTGRES_USER=${DB_USER:-pinuser}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-pinpass}
     ports:
-      - "5432:5432"
+      - "${DB_PORT}:5432"
+    env_file:
+      - ../.env
 
   redis:
     image: redis:7-alpine

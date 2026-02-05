@@ -90,6 +90,9 @@ class ParseTask(models.Model):
     def mark_running(self, celery_task_id: str):
         self.status = TaskStatus.RUNNING
         self.celery_task_id = celery_task_id
+        self.processed_urls = 0
+        self.total_urls = 0
+        self.error_message = None
         self.started_at = timezone.now()
         self.save(update_fields=[
             "status", "celery_task_id", "started_at"
