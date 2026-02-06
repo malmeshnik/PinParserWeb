@@ -71,9 +71,13 @@ class PinterestParsePipeline:
                         success = True
                         break
                     else:
-                        logger.warning(f"[PIPELINE] 0 pins for account {self.account}, attempt {attempt+1}")
+                        msg = f"0 pins collected for account {self.account}, attempt {attempt+1}"
+                        logger.warning(f"[PIPELINE] {msg}")
+                        self._log_error(msg)
                 except Exception as e:
-                    logger.warning(f"[PIPELINE] Error for account {self.account}, attempt {attempt+1}: {e}")
+                    error_msg = f"Error for account {self.account}, attempt {attempt+1}: {e}"
+                    logger.warning(f"[PIPELINE] {error_msg}")
+                    self._log_error(error_msg)
 
             if success:
                 break
@@ -137,7 +141,7 @@ class PinterestParsePipeline:
         return total_collected
 
     def _fetch_and_parse_pins(self):
-        fetcher = PinFetcher(account=self.account)
+        fetcher = PinFetcher(account=self.account, task=self.task)
         max_threads = min(3, self.task.threads)
 
         all_urls = []

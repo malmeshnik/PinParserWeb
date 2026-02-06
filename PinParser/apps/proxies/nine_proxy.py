@@ -56,6 +56,15 @@ class NineProxyService:
                     "status": ProxyStatus.ACTIVE,
                 }
             )
+
+            # Verify proxy health before returning
+            if not proxy.check_health():
+                msg = f"Fetched proxy {proxy} failed health check"
+                logger.warning(msg)
+                proxy.status = ProxyStatus.DEAD
+                proxy.save(update_fields=['status'])
+                return None
+
             return proxy
         except ValueError:
             logger.error(f"Invalid proxy format from 9Proxy: {proxy_str}")

@@ -21,11 +21,13 @@ class PinFetcher:
     def __init__(
         self,
         account,
+        task=None,
         timeout: int = 20,
         max_retries: int = 2,
         delay_range: tuple[float, float] = (1.0, 3.0),
     ):
         self.account = account
+        self.task = task
         self.timeout = timeout
         self.max_retries = max_retries
         self.delay_range = delay_range
@@ -57,12 +59,25 @@ class PinFetcher:
                 logger.warning(
                     f"[PIN FETCH] Attempt {attempt} failed | {e}"
                 )
+                if self.account and self.account.proxy:
+                    self.account.proxy.check_health()
                 self._rotate_everything()
 
             time.sleep(random.uniform(*self.delay_range))
 
-        logger.error(f"[PIN FETCH] Failed after retries | {pin_url}")
+        error_msg = f"[PIN FETCH] Failed after retries | {pin_url}"
+        logger.error(error_msg)
+        self._log_to_db(error_msg)
         return None
+
+    def _log_to_db(self, message):
+        if self.task:
+            from apps.logs.models import ErrorLog
+            ErrorLog.objects.create(
+                task=self.task,
+                account=self.account,
+                message=message[:5000]
+            )
 
     def _rotate_everything(self):
         from apps.proxies.nine_proxy import NineProxyService

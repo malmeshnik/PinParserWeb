@@ -102,9 +102,14 @@ class PinterestWorker:
 
         except (PlaywrightTimeout, PlaywrightError) as e:
             logger.warning(f"[{keyword}] Playwright error: {e}")
+            if self.account and self.account.proxy:
+                # Trigger health check on failure
+                self.account.proxy.check_health()
             raise Exception(f"Connection/Proxy error: {e}")
         except Exception as e:
-            logger.error(f"[{keyword}] Error: {e}")
+            error_msg = f"[{keyword}] Error: {e}"
+            logger.error(error_msg)
+            self._log_to_db(error_msg)
             raise e
         finally:
             await browser.close()
@@ -210,6 +215,14 @@ class PinterestWorker:
             return await page.evaluate("document.body.scrollHeight")
         except PlaywrightError:
             return None
+
+    def _log_to_db(self, message):
+        from apps.logs.models import ErrorLog
+        ErrorLog.objects.create(
+            task=self.task,
+            account=self.account,
+            message=message[:5000]
+        )
 
     @staticmethod
     def _normalize_pin_url(href: str) -> str | None:
