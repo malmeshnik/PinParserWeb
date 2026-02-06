@@ -4,7 +4,8 @@ from django.utils.html import format_html
 from django import forms
 from .models import ParseTask, TaskStatus
 from .tasks import run_parse_task
-from apps.results.tasks import export_results_to_sheets
+from apps.results.tasks import export_results_to_excel
+from apps.uniqueness.tasks import run_uniqueness, generate_slugs
 
 class ParseTaskForm(forms.ModelForm):
     keywords_text = forms.CharField(
@@ -35,7 +36,7 @@ class ParseTaskForm(forms.ModelForm):
 @admin.register(ParseTask)
 class ParseTaskAdmin(admin.ModelAdmin):
     form = ParseTaskForm
-    list_display = ('name', 'owner', 'status_badge', 'progress_display', 'error_message', 'view_results_link', 'created_at')
+    list_display = ('name', 'owner', 'status_badge', 'progress_display', 'error_message', 'view_results_link', 'download_excel', 'created_at')
     list_filter = ('status', 'created_at', 'use_uniqueness')
     search_fields = ('name', 'keywords')
     exclude = ('keywords', 'celery_task_id')
@@ -91,7 +92,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
     status_badge.short_description = "Статус"
 
 
-    actions = ['start_task', 'stop_task', 'export_to_sheets']
+    actions = ['start_task', 'stop_task', 'export_to_excel', 'uniqueness_task', 'generate_slug_task']
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -104,17 +105,26 @@ class ParseTaskAdmin(admin.ModelAdmin):
             obj.owner = request.user
         super().save_model(request, obj, form, change)
 
+    def download_excel(self, obj):
+        if not obj.export_file:
+            return "-"
+
+        return format_html(
+            '<a class="button" href="{}" download>⬇️ Excel</a>',
+            obj.export_file.url
+        )
+
+    download_excel.short_description = "Excel"
+
     def view_results_link(self, obj):
         url = reverse('admin:results_pinresult_changelist') + f'?task__id__exact={obj.id}'
         return format_html('<a class="button" href="{}">📊 Результати</a>', url)
     view_results_link.short_description = "Результати"
 
     def progress_display(self, obj):
-        if obj.total_urls > 0:
-            percentage = (obj.processed_urls / obj.total_urls) * 100
-            return f"{obj.processed_urls}/{obj.total_urls} ({percentage:.1f}%)"
-        return f"{obj.processed_urls}/0"
-    progress_display.short_description = "Прогрес"
+        return obj.results.count()
+    
+    view_results_link.short_description = "Знайдено пінів"
 
     def start_task(self, request, queryset):
         for task in queryset:
@@ -128,7 +138,17 @@ class ParseTaskAdmin(admin.ModelAdmin):
         self.message_user(request, "Завдання зупинені")
     stop_task.short_description = "⏹️ Зупинити вибрані завдання"
 
-    @admin.action(description="📤 Експорт у Google Sheets")
-    def export_to_sheets(self, request, queryset):
+    @admin.action(description="📤 Експорт у Excel")
+    def export_to_excel(self, request, queryset):
         for task in queryset:
-            export_results_to_sheets.delay(task.id)
+            export_results_to_excel.delay(task.id)
+
+    @admin.action(description="Унікалізувати")
+    def uniqueness_task(self, request, queryset):
+        for task in queryset:
+            run_uniqueness.delay(task.id)
+
+    @admin.action(description="Згенерувати slug")
+    def generate_slug_task(self, request, queryset):
+        for task in queryset:
+            generate_slugs.delay(task.id)

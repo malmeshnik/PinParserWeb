@@ -32,7 +32,8 @@ def generate_slugs(task_id: int):
 
     for pin in qs.iterator(chunk_size=200):
         pin.slug_url = SlugService.build_slug_url(
-            pin_id=pin.pin_id,
+            pin_id=None,
             utitle=pin.utitle,
+            base_url="xxx"
         )
         pin.save(update_fields=["slug_url"])

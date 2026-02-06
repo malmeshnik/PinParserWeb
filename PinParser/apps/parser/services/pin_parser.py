@@ -93,7 +93,7 @@ class PinParser:
         return None
     
     def _join_annotations(self, pin: dict) -> str | None:
-        pin_join = pin.get("pinJoin")
+        pin_join = pin.get("pinJoin", {})
 
         if not isinstance(pin_join, dict):
             return None

@@ -1,51 +1,75 @@
+# workers/pinterest_worker.py
+
 import asyncio
 import random
 from urllib.parse import urlparse
 from loguru import logger
 from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import TimeoutError as PlaywrightTimeout
 
+from asgiref.sync import sync_to_async
 from workers.browser_factory import BrowserFactory
+from apps.results.models import PinResult
 
 
-SCROLL_PAUSE_RANGE = (1.0, 2.5)
-MAX_SCROLLS_PER_PAGE = 100
+SCROLL_PAUSE_RANGE = (0.8, 1.8)
+MAX_SCROLLS_PER_PAGE = 120
 MAX_SAME_HEIGHT = 6
+NETWORK_FLUSH_SIZE = 50
 
 
 class PinterestWorker:
-    def __init__(self, account, headless=True):
+    def __init__(self, account, task, headless=True):
         self.account = account
+        self.task = task
         self.headless = headless
         self.factory = BrowserFactory(account, headless=headless)
 
-    async def collect_urls_for_keyword(self, keyword: str) -> set[str]:
-        """
-        Collects pin URLs for a single keyword.
-        """
+    async def collect_urls_for_keyword(self, keyword: str) -> list[str]:
         playwright, browser, context = await self.factory.launch()
-        pin_urls = set()
+
+        seen: set[str] = set()
+        dom_urls: list[str] = []
+
+        network_buffer: list[dict] = []
 
         try:
             page = await context.new_page()
 
-            # User-Agent rotation is already in BrowserFactory
+            await self._listen_network(
+                page,
+                keyword,
+                seen,
+                network_buffer,
+            )
 
             logger.info(f"[{keyword}] Starting search")
+
             await page.goto(
                 f"https://www.pinterest.com/search/pins/?q={keyword}",
                 timeout=60_000,
-                wait_until="networkidle"
             )
 
-            last_height = await page.evaluate("document.body.scrollHeight")
+            await asyncio.sleep(3)
+
+            last_height = await self._safe_get_scroll_height(page)
             same_height_count = 0
             scrolls = 0
 
             while scrolls < MAX_SCROLLS_PER_PAGE:
-                await self._extract_pins(page, pin_urls)
+                await self._extract_pins_dom(page, dom_urls, seen)
 
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                if len(network_buffer) >= NETWORK_FLUSH_SIZE:
+                    await self._flush_network_buffer(keyword, network_buffer)
+
+                await page.mouse.wheel(0, random.randint(600, 1200))
                 await asyncio.sleep(random.uniform(*SCROLL_PAUSE_RANGE))
+
+                if random.random() < 0.2:
+                    await page.mouse.move(
+                        random.randint(100, 900),
+                        random.randint(100, 700)
+                    )
 
                 new_height = await self._safe_get_scroll_height(page)
                 if new_height is None:
@@ -60,19 +84,117 @@ class PinterestWorker:
                 scrolls += 1
 
                 if same_height_count >= MAX_SAME_HEIGHT:
-                    logger.info(f"[{keyword}] Reached end of page after {scrolls} scrolls")
                     break
 
-            if not pin_urls:
-                logger.warning(f"[{keyword}] No pins collected. Possible block or empty search.")
+            if network_buffer:
+                await self._flush_network_buffer(keyword, network_buffer)
 
+            logger.info(
+                f"[{keyword}] Done. DOM fallback URLs: {len(dom_urls)}"
+            )
+
+        except PlaywrightTimeout:
+            logger.warning(f"[{keyword}] Timeout, returning partial data")
         except Exception as e:
-            logger.error(f"[{keyword}] Error during collection: {e}")
+            logger.error(f"[{keyword}] Error: {e}")
         finally:
             await browser.close()
             await playwright.stop()
 
-        return pin_urls
+        return dom_urls
+
+
+    async def _listen_network(
+        self,
+        page,
+        keyword: str,
+        seen: set[str],
+        buffer: list[dict],
+    ):
+        async def handle_response(response):
+            if "BaseSearchResource/get" not in response.url:
+                return
+
+            try:
+                data = await response.json()
+            except Exception:
+                return
+
+            results = (
+                data.get("resource_response", {})
+                    .get("data", {})
+                    .get("results", [])
+            )
+
+            for pin in results:
+                pin_id = pin.get("id")
+
+                if not pin_id or not pin_id.isdigit():
+                    continue
+
+                pin_url = f"https://www.pinterest.com/pin/{pin_id}/"
+                if pin_url in seen:
+                    continue
+
+                seen.add(pin_url)
+                buffer.append(pin)
+
+        page.on("response", handle_response)
+
+
+    async def _flush_network_buffer(self, keyword: str, buffer: list[dict]):
+        objects = []
+
+        for pin in buffer:
+            pin_id = pin.get("id")
+
+            if not pin_id or not pin_id.isdigit():
+                continue
+
+            images = pin.get("images", {})
+            orig = images.get("orig", {})
+
+            objects.append(
+                PinResult(
+                    task=self.task,
+                    keyword=keyword,
+                    pin_id=pin_id,
+                    pin_url=f"https://www.pinterest.com/pin/{pin_id}/",
+                    title=pin.get("title"),
+                    description=pin.get("description"),
+                    image_url=orig.get("url"),
+                    domain=pin.get("domain"),
+                    alt_text=pin.get("grid_title"),
+                    annotation=pin.get("board", {}).get("name"),
+                    saves=pin.get("reaction_counts", {}).get("1"),
+                    pinner_username=pin.get("pinner", {}).get("username"),
+                    creation_date=pin.get("created_at"),
+                )
+            )
+
+        await sync_to_async(PinResult.objects.bulk_create)(
+            objects,
+            ignore_conflicts=True,
+            batch_size=500,
+        )
+
+        buffer.clear()
+
+
+    async def _extract_pins_dom(self, page, bucket: list[str], seen: set[str]):
+        try:
+            links = await page.query_selector_all("a[href^='/pin/']")
+            for link in links:
+                href = await link.get_attribute("href")
+                if not href:
+                    continue
+
+                normalized = self._normalize_pin_url(href)
+                if normalized and normalized not in seen:
+                    seen.add(normalized)
+                    bucket.append(normalized)
+        except PlaywrightError:
+            pass
 
     async def _safe_get_scroll_height(self, page) -> int | None:
         try:
@@ -80,23 +202,10 @@ class PinterestWorker:
         except PlaywrightError:
             return None
 
-    async def _extract_pins(self, page, bucket: set[str]):
-        try:
-            links = await page.query_selector_all("a[href^='/pin/']")
-            for link in links:
-                href = await link.get_attribute("href")
-                if href:
-                    normalized = self._normalize_pin_url(href)
-                    if normalized:
-                        bucket.add(normalized)
-        except PlaywrightError:
-            pass
-
     @staticmethod
     def _normalize_pin_url(href: str) -> str | None:
         parsed = urlparse(href)
         parts = parsed.path.strip("/").split("/")
-        if len(parts) >= 2 and parts[0] == 'pin':
-            pin_id = parts[1]
-            return f"https://www.pinterest.com/pin/{pin_id}/"
+        if len(parts) >= 2 and parts[0] == "pin":
+            return f"https://www.pinterest.com/pin/{parts[1]}/"
         return None

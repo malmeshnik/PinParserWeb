@@ -5,7 +5,7 @@ from loguru import logger
 from apps.tasks.models import ParseTask, TaskStatus
 from apps.accounts.models import PinterestAccount
 from apps.parser.services.pipeline import PinterestParsePipeline
-from apps.results.tasks import export_results_to_sheets
+from apps.results.tasks import export_results_to_excel
 from apps.uniqueness.tasks import run_uniqueness, generate_slugs
 
 
@@ -27,9 +27,9 @@ def run_parse_task(self, task_id: int):
         # Post-processing chain
         if task.use_uniqueness:
             # We chain uniqueness -> slug generation -> sheets export
-            (run_uniqueness.s(task.id) | generate_slugs.si(task.id) | export_results_to_sheets.si(task.id)).apply_async()
+            (run_uniqueness.s(task.id) | generate_slugs.si(task.id) | export_results_to_excel.si(task.id)).apply_async()
         else:
-            export_results_to_sheets.delay(task.id)
+            export_results_to_excel.delay(task.id)
 
         return {"parsed": parsed_count}
 

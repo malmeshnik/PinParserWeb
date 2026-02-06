@@ -3,3 +3,4 @@ __pycache__
 credentials
 venv
 db.sqlite3
+media

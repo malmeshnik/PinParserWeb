@@ -47,7 +47,13 @@ class AIUniquenessService:
             return
 
         try:
-            data = json.loads(content)
+            match = re.search(r"\{.*\}", content, re.S)
+
+            if not match:
+                raise ValueError("No JSON found")
+            
+            logger.info(f'Find json answer {match}')
+            data = json.loads(match.group())
             pin.utitle = data.get("title")
             pin.udescription = data.get("description")
             pin.save(update_fields=["utitle", "udescription"])

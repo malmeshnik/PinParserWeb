@@ -49,6 +49,12 @@ class ParseTask(models.Model):
         verbose_name="Назва таблиці результатів",
     )
 
+    export_file = models.FileField(
+        upload_to="exports/",
+        null=True,
+        blank=True
+    )
+
     celery_task_id = models.CharField(
         max_length=255,
         blank=True,

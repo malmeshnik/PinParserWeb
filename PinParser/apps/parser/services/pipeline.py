@@ -60,7 +60,7 @@ class PinterestParsePipeline:
         logger.info(f"[PIPELINE] Collecting URLs for {len(keywords)} keywords with {max_threads} threads")
 
         def collect_job(kw):
-            worker = PinterestWorker(account=self.account, headless=self.headless)
+            worker = PinterestWorker(account=self.account, task=self.task, headless=self.headless)
             # We need to run the async method in a new event loop for each thread
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
