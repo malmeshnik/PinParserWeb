@@ -45,10 +45,17 @@ class PinterestWorker:
 
             logger.info(f"[{keyword}] Starting search")
 
-            await page.goto(
+            response = await page.goto(
                 f"https://www.pinterest.com/search/pins/?q={keyword}",
                 timeout=60_000,
             )
+
+            if response and not response.ok:
+                logger.warning(f"[{keyword}] Page load failed: {response.status}")
+                if response.status == 429:
+                    raise Exception("Rate limited (429)")
+                if response.status >= 500:
+                    raise Exception(f"Pinterest server error ({response.status})")
 
             await asyncio.sleep(3)
 
@@ -93,10 +100,12 @@ class PinterestWorker:
                 f"[{keyword}] Done. DOM fallback URLs: {len(dom_urls)}"
             )
 
-        except PlaywrightTimeout:
-            logger.warning(f"[{keyword}] Timeout, returning partial data")
+        except (PlaywrightTimeout, PlaywrightError) as e:
+            logger.warning(f"[{keyword}] Playwright error: {e}")
+            raise Exception(f"Connection/Proxy error: {e}")
         except Exception as e:
             logger.error(f"[{keyword}] Error: {e}")
+            raise e
         finally:
             await browser.close()
             await playwright.stop()
