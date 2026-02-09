@@ -37,16 +37,28 @@ class BrowserFactory:
         }
 
         current_proxy = self.proxy
-        # If no proxy assigned to account, try to get one from 9Proxy
-        if not current_proxy:
-            nine_proxy = NineProxyService()
-            current_proxy = nine_proxy.get_and_create_proxy_model()
-            if current_proxy:
-                logger.info(f"Got proxy from 9Proxy: {current_proxy.host}:{current_proxy.port}")
+        proxy_url = None
 
         if current_proxy:
+            if current_proxy.is_9proxy:
+                nine_proxy = NineProxyService()
+                filters = {
+                    "country": current_proxy.country,
+                    "state": current_proxy.state,
+                    "city": current_proxy.city,
+                    "zip": current_proxy.zip,
+                    "isp": current_proxy.isp,
+                }
+                proxies = nine_proxy.get_proxy(num=1, filters=filters)
+                if proxies:
+                    proxy_url = f"http://{proxies[0]}"
+                    logger.info(f"Using dynamic 9Proxy: {proxy_url} for {current_proxy}")
+            else:
+                proxy_url = f"http://{current_proxy.host}:{current_proxy.port}"
+
+        if proxy_url:
             launch_kwargs["proxy"] = {
-                "server": f"http://{current_proxy.host}:{current_proxy.port}",
+                "server": proxy_url,
             }
 
         logger.info(

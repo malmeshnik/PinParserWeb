@@ -51,17 +51,7 @@ class PinterestParsePipeline:
         for account in accounts:
             self.account = account
             self.account.last_used_at = timezone.now()
-
-            # Pre-assign proxy from 9Proxy if account doesn't have one
-            if not self.account.proxy:
-                from apps.proxies.nine_proxy import NineProxyService
-                nine_proxy = NineProxyService()
-                new_proxy = nine_proxy.get_and_create_proxy_model()
-                if new_proxy:
-                    self.account.proxy = new_proxy
-                    logger.info(f"[PIPELINE] Pre-assigned 9Proxy {new_proxy} to account {self.account}")
-
-            self.account.save(update_fields=['last_used_at', 'proxy'])
+            self.account.save(update_fields=['last_used_at'])
 
             for attempt in range(2):
                 logger.info(f"[PIPELINE] Task #{self.task.id}, Account {self.account}, Attempt {attempt+1}")

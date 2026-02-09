@@ -6,13 +6,11 @@ class NineProxyService:
     def __init__(self, api_url=None):
         self.api_url = api_url or getattr(settings, "NINE_PROXY_API_URL", None)
 
-    def get_proxy(self, num=1, country=None):
+    def get_proxy(self, num=1, filters=None):
         """
         Fetches proxies from 9Proxy API.
         Returns a list of proxy strings in format "host:port".
         """
-        from apps.proxies.models import NineProxyConfig
-
         if not self.api_url:
             logger.warning("NINE_PROXY_API_URL is not configured")
             return []
@@ -22,18 +20,12 @@ class NineProxyService:
             "t": 2, # JSON format
         }
 
-        # Try to get parameters from DB config
-        config = NineProxyConfig.objects.last()
-        if config:
-            if config.country: params["country"] = config.country
-            if config.state: params["state"] = config.state
-            if config.city: params["city"] = config.city
-            if config.zip: params["zip"] = config.zip
-            if config.isp: params["isp"] = config.isp
-
-        # Override with method argument if provided
-        if country:
-            params["country"] = country
+        if filters:
+            if filters.get("country"): params["country"] = filters["country"]
+            if filters.get("state"): params["state"] = filters["state"]
+            if filters.get("city"): params["city"] = filters["city"]
+            if filters.get("zip"): params["zip"] = filters["zip"]
+            if filters.get("isp"): params["isp"] = filters["isp"]
 
         try:
             # Assuming the API URL provided is the base URL like http://127.0.0.1:10101
@@ -51,10 +43,10 @@ class NineProxyService:
             logger.error(f"Failed to fetch from 9Proxy: {e}")
             return []
 
-    def get_and_create_proxy_model(self, country=None):
+    def get_and_create_proxy_model(self, filters=None):
         from apps.proxies.models import Proxy, ProxyStatus
 
-        proxies = self.get_proxy(num=1, country=country)
+        proxies = self.get_proxy(num=1, filters=filters)
         if not proxies:
             return None
 

@@ -80,33 +80,16 @@ class PinFetcher:
             )
 
     def _rotate_everything(self):
-        from apps.proxies.nine_proxy import NineProxyService
-
         new_ua = random.choice(USER_AGENTS)
         self.session.headers.update({"User-Agent": new_ua})
         if self.account:
             self.account.user_agent = new_ua
             self.account.save(update_fields=['user_agent'])
 
-        current_proxy = None
         if self.account and self.account.rotate_proxy():
-            current_proxy = self.account.proxy
-        else:
-            # Try 9Proxy
-            nine_proxy = NineProxyService()
-            current_proxy = nine_proxy.get_and_create_proxy_model()
+            self._apply_proxy(self.account.proxy)
 
-        if current_proxy:
-            proxy_url = f"http://{current_proxy.host}:{current_proxy.port}"
-            self.session.proxies.update({
-                "http": proxy_url,
-                "https": proxy_url,
-            })
-            logger.info(f"[PIN FETCH] Rotated to new proxy: {proxy_url}")
-    
     def _prepare_session(self):
-        from apps.proxies.nine_proxy import NineProxyService
-
         ua = self.account.user_agent if self.account and self.account.user_agent else random.choice(USER_AGENTS)
 
         self.session.headers.update({
@@ -119,18 +102,34 @@ class PinFetcher:
             "Connection": "keep-alive",
         })
 
-        current_proxy = self.account.proxy
-        if not current_proxy:
-            nine_proxy = NineProxyService()
-            current_proxy = nine_proxy.get_and_create_proxy_model()
+        if self.account.proxy:
+            self._apply_proxy(self.account.proxy)
 
-        if current_proxy:
-            proxy_url = f"http://{current_proxy.host}:{current_proxy.port}"
+    def _apply_proxy(self, proxy):
+        from apps.proxies.nine_proxy import NineProxyService
+
+        proxy_url = None
+        if proxy.is_9proxy:
+            nine_proxy = NineProxyService()
+            filters = {
+                "country": proxy.country,
+                "state": proxy.state,
+                "city": proxy.city,
+                "zip": proxy.zip,
+                "isp": proxy.isp,
+            }
+            proxies = nine_proxy.get_proxy(num=1, filters=filters)
+            if proxies:
+                proxy_url = f"http://{proxies[0]}"
+        else:
+            proxy_url = f"http://{proxy.host}:{proxy.port}"
+
+        if proxy_url:
             self.session.proxies.update({
                 "http": proxy_url,
                 "https": proxy_url,
             })
-            logger.info(f"[PIN FETCH] Using proxy {proxy_url}")
+            logger.info(f"[PIN FETCH] Applied proxy: {proxy_url}")
 
     def _is_valid_response(self, response: Response) -> bool:
         if response.status_code != 200:
