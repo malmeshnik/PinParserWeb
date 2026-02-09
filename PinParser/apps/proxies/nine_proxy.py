@@ -11,6 +11,8 @@ class NineProxyService:
         Fetches proxies from 9Proxy API.
         Returns a list of proxy strings in format "host:port".
         """
+        from apps.proxies.models import NineProxyConfig
+
         if not self.api_url:
             logger.warning("NINE_PROXY_API_URL is not configured")
             return []
@@ -19,6 +21,17 @@ class NineProxyService:
             "num": num,
             "t": 2, # JSON format
         }
+
+        # Try to get parameters from DB config
+        config = NineProxyConfig.objects.last()
+        if config:
+            if config.country: params["country"] = config.country
+            if config.state: params["state"] = config.state
+            if config.city: params["city"] = config.city
+            if config.zip: params["zip"] = config.zip
+            if config.isp: params["isp"] = config.isp
+
+        # Override with method argument if provided
         if country:
             params["country"] = country
 

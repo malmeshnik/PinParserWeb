@@ -89,3 +89,30 @@ class Proxy(models.Model):
         self.last_checked_at = timezone.now()
         self.save(update_fields=['status', 'fail_count', 'last_checked_at'])
         return self.status == ProxyStatus.ACTIVE
+
+
+class NineProxyConfig(models.Model):
+    country = models.CharField(
+        max_length=50, verbose_name="Країна (код, напр. US, VN)", blank=True, null=True
+    )
+    state = models.CharField(
+        max_length=50, verbose_name="Штат/Область", blank=True, null=True
+    )
+    city = models.CharField(
+        max_length=50, verbose_name="Місто", blank=True, null=True
+    )
+    zip = models.CharField(
+        max_length=20, verbose_name="Поштовий індекс", blank=True, null=True
+    )
+    isp = models.CharField(
+        max_length=100, verbose_name="ISP", blank=True, null=True
+    )
+
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Останнє оновлення")
+
+    class Meta:
+        verbose_name = "Налаштування 9Proxy"
+        verbose_name_plural = "Налаштування 9Proxy"
+
+    def __str__(self):
+        return f"Налаштування 9Proxy від {self.updated_at.strftime('%Y-%m-%d %H:%M')}"

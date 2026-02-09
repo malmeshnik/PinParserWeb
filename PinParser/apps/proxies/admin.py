@@ -1,5 +1,13 @@
 from django.contrib import admin
-from .models import Proxy
+from .models import Proxy, NineProxyConfig
+
+@admin.register(NineProxyConfig)
+class NineProxyConfigAdmin(admin.ModelAdmin):
+    list_display = ('id', 'country', 'state', 'city', 'updated_at')
+
+    def has_add_permission(self, request):
+        # Only allow one config
+        return not NineProxyConfig.objects.exists()
 
 @admin.register(Proxy)
 class ProxyAdmin(admin.ModelAdmin):
