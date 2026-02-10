@@ -12,7 +12,7 @@ from workers.browser_factory import BrowserFactory
 from apps.results.models import PinResult
 
 
-SCROLL_PAUSE_RANGE = (0.8, 1.8)
+SCROLL_PAUSE_RANGE = (4, 8)
 MAX_SCROLLS_PER_PAGE = 120
 MAX_SAME_HEIGHT = 6
 NETWORK_FLUSH_SIZE = 50

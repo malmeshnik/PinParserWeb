@@ -1,5 +1,6 @@
 import random
 from loguru import logger
+from asgiref.sync import sync_to_async
 from playwright.async_api import async_playwright
 
 USER_AGENTS = [
@@ -49,9 +50,9 @@ class BrowserFactory:
                     "zip": current_proxy.zip,
                     "isp": current_proxy.isp,
                 }
-                proxies = nine_proxy.get_proxy(num=1, filters=filters)
-                if proxies:
-                    proxy_url = f"http://{proxies[0]}"
+                proxy = await sync_to_async(nine_proxy.get_proxy)(current_proxy, filters=filters)
+                if proxy:
+                    proxy_url = f"http://{proxy.host}:{proxy.port}"
                     logger.info(f"Using dynamic 9Proxy: {proxy_url} for {current_proxy}")
             else:
                 proxy_url = f"http://{current_proxy.host}:{current_proxy.port}"

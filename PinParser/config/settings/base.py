@@ -114,3 +114,4 @@ CELERY_TASK_TIME_LIMIT = 60 * 60
 GOOGLE_SERVICE_ACCOUNT_FILE = BASE_DIR / "credentials/google_service_account.json"
 
 NINE_PROXY_API_URL = env("NINE_PROXY_API_URL", default=None)
+NINE_PROXY_HOST = env("NINE_PROXY_HOST", default=None)

@@ -1,76 +1,123 @@
 import requests
 from django.conf import settings
 from loguru import logger
+from django.db.models import Max
+
+from apps.proxies.models import Proxy, ProxyStatus
+
 
 class NineProxyService:
     def __init__(self, api_url=None):
         self.api_url = api_url or getattr(settings, "NINE_PROXY_API_URL", None)
 
-    def get_proxy(self, num=1, filters=None):
-        """
-        Fetches proxies from 9Proxy API.
-        Returns a list of proxy strings in format "host:port".
-        """
-        if not self.api_url:
-            logger.warning("NINE_PROXY_API_URL is not configured")
-            return []
-
+    def _build_params(self, num=1, port=None, filters=None):
         params = {
             "num": num,
-            "t": 2, # JSON format
+            "t": 2,
         }
 
+        if port:
+            params["port"] = port
+
         if filters:
-            if filters.get("country"): params["country"] = filters["country"]
-            if filters.get("state"): params["state"] = filters["state"]
-            if filters.get("city"): params["city"] = filters["city"]
-            if filters.get("zip"): params["zip"] = filters["zip"]
-            if filters.get("isp"): params["isp"] = filters["isp"]
+            params.update({
+                k: v for k, v in filters.items()
+                if v is not None
+            })
 
-        try:
-            # Assuming the API URL provided is the base URL like http://127.0.0.1:10101
-            url = f"{self.api_url.rstrip('/')}/api/proxy"
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+        return params
 
-            if data.get("error"):
-                logger.error(f"9Proxy API error: {data.get('message')}")
-                return []
+    def _request_proxy(self, params):
+        url = f"{self.api_url.rstrip('/')}/api/proxy"
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
 
-            return data.get("data", [])
-        except Exception as e:
-            logger.error(f"Failed to fetch from 9Proxy: {e}")
-            return []
+        data = response.json()
+        if data.get("error"):
+            raise RuntimeError(data.get("message"))
 
-    def get_and_create_proxy_model(self, filters=None):
-        from apps.proxies.models import Proxy, ProxyStatus
+        return data.get("data", [])
 
-        proxies = self.get_proxy(num=1, filters=filters)
-        if not proxies:
+    def _get_next_port(self):
+
+        last_port = Proxy.objects.aggregate(
+            max_port=Max("port")
+        )["max_port"]
+
+        return (last_port or 60000) + 1
+
+    def get_proxy(self, proxy: Proxy, filters=None):
+        if not self.api_url:
+            logger.warning("NINE_PROXY_API_URL is not configured")
             return None
 
-        proxy_str = proxies[0] # host:port
-        try:
-            host, port = proxy_str.split(":")
-            proxy, created = Proxy.objects.get_or_create(
-                host=host,
-                port=port,
-                defaults={
-                    "name": f"9Proxy_{host}_{port}",
-                    "status": ProxyStatus.ACTIVE,
-                }
-            )
+        if proxy.port:
+            if proxy.check_health():
+                return proxy
 
-            # Verify proxy health before returning
+            logger.warning(f"Proxy {proxy} is dead, refreshing on same port")
+            return self._refresh_proxy(proxy, filters)
+
+        return self._create_new_proxy(proxy, filters)
+
+    def _create_new_proxy(self, proxy: Proxy, filters: dict):
+        
+
+        port = self._get_next_port()
+        params = self._build_params(num=1, port=port, filters=filters)
+
+        try:
+            proxies = self._request_proxy(params)
+            if not proxies:
+                return None
+
+            host, _ = proxies[0].split(":")
+
+            proxy.host = host
+            proxy.port = port
+            proxy.status = ProxyStatus.ACTIVE
+            proxy.fail_count = 0
+            proxy.save(update_fields=["host", "port", "status", "fail_count"])
+
             if not proxy.check_health():
-                msg = f"Fetched proxy {proxy} failed health check"
-                logger.warning(msg)
-                proxy.status = ProxyStatus.DEAD
-                proxy.save(update_fields=['status'])
                 return None
 
             return proxy
-        except ValueError:
-            logger.error(f"Invalid proxy format from 9Proxy: {proxy_str}")
+
+        except Exception as e:
+            logger.error(f"Failed to create proxy: {e}")
+            return None
+
+    def _refresh_proxy(self, proxy, filters):
+
+        params = self._build_params(
+            num=1,
+            port=proxy.port,
+            filters=filters
+        )
+
+        try:
+            proxies = self._request_proxy(params)
+            if not proxies:
+                proxy.status = ProxyStatus.DEAD
+                proxy.save(update_fields=["status"])
+                return None
+
+            host, _ = proxies[0].split(":")
+
+            proxy.host = host
+            proxy.status = ProxyStatus.ACTIVE
+            proxy.save(update_fields=["host", "status"])
+
+            if not proxy.check_health():
+                proxy.status = ProxyStatus.DEAD
+                proxy.save(update_fields=["status"])
+                return None
+
+            return proxy
+
+        except Exception as e:
+            logger.error(f"Failed to refresh proxy on port {proxy.port}: {e}")
+            proxy.status = ProxyStatus.DEAD
+            proxy.save(update_fields=["status"])
             return None

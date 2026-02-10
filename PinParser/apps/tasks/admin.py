@@ -92,7 +92,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
     status_badge.short_description = "Статус"
 
 
-    actions = ['start_task', 'stop_task', 'export_to_excel', 'uniqueness_task', 'generate_slug_task']
+    actions = ['start_task', 'export_to_excel', 'uniqueness_task', 'generate_slug_task']
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -132,11 +132,6 @@ class ParseTaskAdmin(admin.ModelAdmin):
                 run_parse_task.delay(task.id)
         self.message_user(request, "Завдання запущені")
     start_task.short_description = "▶️ Запустити вибрані завдання"
-
-    def stop_task(self, request, queryset):
-        queryset.update(status=TaskStatus.STOPPED)
-        self.message_user(request, "Завдання зупинені")
-    stop_task.short_description = "⏹️ Зупинити вибрані завдання"
 
     @admin.action(description="📤 Експорт у Excel")
     def export_to_excel(self, request, queryset):

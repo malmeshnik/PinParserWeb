@@ -1,6 +1,7 @@
 import random
 import time
 from typing import Optional
+from asgiref.sync import sync_to_async
 
 import requests
 from loguru import logger
@@ -118,9 +119,9 @@ class PinFetcher:
                 "zip": proxy.zip,
                 "isp": proxy.isp,
             }
-            proxies = nine_proxy.get_proxy(num=1, filters=filters)
-            if proxies:
-                proxy_url = f"http://{proxies[0]}"
+            proxiy= nine_proxy.get_proxy(proxy, filters=filters)
+            if proxiy:
+                proxy_url = f"http://{proxy.host}:{proxy.port}"
         else:
             proxy_url = f"http://{proxy.host}:{proxy.port}"
 

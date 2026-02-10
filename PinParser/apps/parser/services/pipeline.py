@@ -1,9 +1,10 @@
-import random
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
+
 from loguru import logger
 from django.utils import timezone
+from django.db.models import F
 
 from apps.tasks.models import ParseTask, TaskStatus
 from apps.accounts.models import PinterestAccount, AccountStatus
@@ -13,135 +14,152 @@ from workers.pinterest_worker import PinterestWorker
 from workers.pin_fetcher import PinFetcher
 from .pin_parser import PinParser
 
+
 class PinterestParsePipeline:
-    def __init__(
-        self,
-        task: ParseTask,
-        account: PinterestAccount = None,
-        headless: bool = True,
-    ):
+    def __init__(self, task: ParseTask, headless: bool = True):
         self.task = task
-        self.account = account or self._get_available_account()
         self.headless = headless
         self.parser = PinParser()
         self.urls_by_keyword = defaultdict(set)
 
-        if not self.account:
-            raise Exception("Немає доступних активних аккаунтів Pinterest")
-
-    def _get_available_account(self):
-        return PinterestAccount.objects.filter(
-            is_active=True,
-            status=AccountStatus.ACTIVE
-        ).order_by('last_used_at').first()
-
     def run(self) -> int:
-        accounts = list(PinterestAccount.objects.filter(
-            is_active=True,
-            status=AccountStatus.ACTIVE
-        ).order_by('last_used_at')[:10])
+        accounts = self._get_accounts()
 
         if not accounts:
-            error_msg = "Немає доступних активних аккаунтів Pinterest"
-            self._log_error(error_msg)
-            self.task.mark_failed(error_msg)
+            msg = "Немає доступних активних аккаунтів Pinterest"
+            self._fail_task(msg)
             return 0
 
-        success = False
         for account in accounts:
-            self.account = account
-            self.account.last_used_at = timezone.now()
-            self.account.save(update_fields=['last_used_at'])
+            logger.info(f"[PIPELINE] Trying account ID={account.id}")
 
-            for attempt in range(2):
-                logger.info(f"[PIPELINE] Task #{self.task.id}, Account {self.account}, Attempt {attempt+1}")
-                try:
-                    total_collected = self._collect_all_urls()
-                    if total_collected > 0:
-                        success = True
-                        break
-                    else:
-                        msg = f"0 pins collected for account {self.account}, attempt {attempt+1}"
-                        logger.warning(f"[PIPELINE] {msg}")
-                        self._log_error(msg)
-                except Exception as e:
-                    error_msg = f"Error for account {self.account}, attempt {attempt+1}: {e}"
-                    logger.warning(f"[PIPELINE] {error_msg}")
-                    self._log_error(error_msg)
+            success = self._run_with_account(account)
 
             if success:
-                break
-            else:
-                logger.warning(f"[PIPELINE] Account {self.account} failed all attempts, rotating...")
-                self.account.fail_count += 1
-                if self.account.fail_count >= 5:
-                    self.account.status = AccountStatus.ERROR
-                self.account.save(update_fields=['fail_count', 'status'])
+                account.last_used_at = timezone.now()
+                account.save(update_fields=["last_used_at"])
+                self._fetch_and_parse_pins(account)
+                return self.task.processed_urls
 
-        if not success:
-            error_msg = "Не вдалося зібрати піни жодним з доступних аккаунтів"
-            self._log_error(error_msg)
-            self.task.mark_failed(error_msg)
-            return 0
+            self._handle_account_failure(account)
 
-        if self.task.status == TaskStatus.STOPPED:
-            return 0
+        msg = "Не вдалося зібрати піни жодним з доступних аккаунтів"
+        self._fail_task(msg)
+        return 0
 
-        self._fetch_and_parse_pins()
-        return self.task.processed_urls
+    def _get_accounts(self):
+        return list(
+            PinterestAccount.objects.filter(
+                is_active=True,
+                status=AccountStatus.ACTIVE
+            ).order_by(
+                F("last_used_at").asc(nulls_first=True)
+            )
+        )
 
-    def _collect_all_urls(self) -> int:
+    def _run_with_account(self, account: PinterestAccount) -> bool:
+        for attempt in range(1, 3):
+            logger.info(
+                f"[PIPELINE] Task #{self.task.id}, "
+                f"Account ID={account.id}, Attempt {attempt}"
+            )
+
+            try:
+                total = self._collect_all_urls(account)
+                if total > 0:
+                    return True
+
+                self._log_error(
+                    f"0 pins collected for account {account.id}, attempt {attempt}",
+                    account,
+                )
+
+            except Exception as e:
+                self._log_error(
+                    f"Error for account {account.id}, attempt {attempt}: {e}",
+                    account,
+                )
+
+        return False
+
+    def _handle_account_failure(self, account: PinterestAccount):
+        logger.warning(f"[PIPELINE] Account {account.id} failed, rotating")
+
+        account.fail_count += 1
+        if account.fail_count >= 5:
+            account.status = AccountStatus.ERROR
+
+        account.save(update_fields=["fail_count", "status"])
+
+    def _collect_all_urls(self, account: PinterestAccount) -> int:
         keywords = self.task.keywords
         if isinstance(keywords, str):
             keywords = [keywords]
 
         max_threads = min(3, self.task.threads)
-        logger.info(f"[PIPELINE] Collecting URLs for {len(keywords)} keywords with {max_threads} threads using account {self.account}")
+        logger.info(
+            f"[PIPELINE] Collecting URLs for {len(keywords)} keywords "
+            f"using account ID={account.id}"
+        )
 
-        def collect_job(kw):
-            worker = PinterestWorker(account=self.account, task=self.task, headless=self.headless)
+        def job(keyword: str):
+            worker = PinterestWorker(
+                account=account,
+                task=self.task,
+                headless=self.headless,
+            )
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                return loop.run_until_complete(worker.collect_urls_for_keyword(kw))
+                return loop.run_until_complete(
+                    worker.collect_urls_for_keyword(keyword)
+                )
             finally:
                 loop.close()
 
-        total_collected = 0
-        error_count = 0
+        total = 0
+        errors = 0
+
         with ThreadPoolExecutor(max_workers=max_threads) as executor:
-            future_to_kw = {executor.submit(collect_job, kw): kw for kw in keywords}
-            for future in as_completed(future_to_kw):
-                kw = future_to_kw[future]
+            futures = {executor.submit(job, kw): kw for kw in keywords}
+
+            for future in as_completed(futures):
+                kw = futures[future]
                 try:
                     urls = future.result()
                     self.urls_by_keyword[kw].update(urls)
-                    total_collected += len(urls)
-                    logger.info(f"[PIPELINE] Keyword '{kw}' collected {len(urls)} pins")
+                    total += len(urls)
+                    logger.info(
+                        f"[PIPELINE] Keyword '{kw}' collected {len(urls)} pins"
+                    )
                 except Exception as e:
-                    error_count += 1
-                    self._log_error(f"Error collecting for keyword {kw}: {e}")
+                    errors += 1
+                    self._log_error(
+                        f"Error collecting for keyword {kw}: {e}",
+                        account,
+                    )
 
-        self.task.total_urls = total_collected
+        self.task.total_urls = total
         self.task.save(update_fields=["total_urls"])
 
-        if error_count == len(keywords) and total_collected == 0:
+        if errors == len(keywords) and total == 0:
             raise Exception("Всі потоки завершилися з помилкою")
 
-        return total_collected
+        return total
 
-    def _fetch_and_parse_pins(self):
-        fetcher = PinFetcher(account=self.account, task=self.task)
+    def _fetch_and_parse_pins(self, account: PinterestAccount):
+        fetcher = PinFetcher(account=account, task=self.task)
         max_threads = min(3, self.task.threads)
 
-        all_urls = []
-        for kw, urls in self.urls_by_keyword.items():
-            for url in urls:
-                all_urls.append((kw, url))
+        all_urls = [
+            (kw, url)
+            for kw, urls in self.urls_by_keyword.items()
+            for url in urls
+        ]
 
         processed = 0
 
-        def process_pin(kw, url):
+        def process(kw, url):
             if self.task.status == TaskStatus.STOPPED:
                 return None
 
@@ -149,13 +167,14 @@ class PinterestParsePipeline:
             if not html:
                 return None
 
-            data = self.parser.parse(html, url, kw)
-            if data:
-                return data
-            return None
+            return self.parser.parse(html, url, kw)
 
         with ThreadPoolExecutor(max_workers=max_threads) as executor:
-            futures = [executor.submit(process_pin, kw, url) for kw, url in all_urls]
+            futures = [
+                executor.submit(process, kw, url)
+                for kw, url in all_urls
+            ]
+
             for future in as_completed(futures):
                 if self.task.status == TaskStatus.STOPPED:
                     break
@@ -173,40 +192,21 @@ class PinterestParsePipeline:
         self.task.processed_urls = processed
         self.task.save(update_fields=["processed_urls"])
 
-    def _save_result(self, data):
+    def _save_result(self, data: dict):
         PinResult.objects.get_or_create(
             task=self.task,
             pin_url=data["pin_url"],
-            defaults={
-                "keyword": data["keyword"],
-                "pin_id": data.get("pin_id"),
-                "title": data.get("title"),
-                "description": data.get("description"),
-                "image_url": data.get("image_url"),
-                "domain": data.get("domain"),
-                "alt_text": data.get("alt_text"),
-                "annotation": data.get("annotation"),
-                "saves": data.get("saves"),
-                "pinner_username": data.get("pinner_username"),
-                "creation_date": data.get("creation_date"),
-            }
+            defaults=data,
         )
 
-    def _handle_no_results(self):
-        logger.warning(f"[PIPELINE] No results for task {self.task.id}. Rotating account...")
-        # Mark current account as error if it consistently fails
-        self.account.fail_count += 1
-        if self.account.fail_count >= 5:
-            self.account.status = AccountStatus.ERROR
-        self.account.save()
+    def _fail_task(self, message: str):
+        logger.error(f"[PIPELINE] {message}")
+        self.task.mark_failed(message)
 
-        # In a real scenario, we might want to restart the collection with a new account here
-        # But for now we just log it.
-
-    def _log_error(self, message):
+    def _log_error(self, message: str, account: PinterestAccount):
         logger.error(f"[PIPELINE] {message}")
         ErrorLog.objects.create(
             task=self.task,
-            account=self.account,
-            message=message[:5000]
+            account=account,
+            message=message[:5000],
         )

@@ -24,9 +24,7 @@ def run_parse_task(self, task_id: int):
         parsed_count = pipeline.run()
         task.mark_success(parsed_count)
 
-        # Post-processing chain
         if task.use_uniqueness:
-            # We chain uniqueness -> slug generation -> sheets export
             (run_uniqueness.s(task.id) | generate_slugs.si(task.id) | export_results_to_excel.si(task.id)).apply_async()
         else:
             export_results_to_excel.delay(task.id)
