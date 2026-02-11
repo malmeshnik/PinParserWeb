@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'rest_framework',
+    'drf_spectacular',
 
     'apps.parser',
     'apps.accounts',
@@ -115,3 +116,21 @@ GOOGLE_SERVICE_ACCOUNT_FILE = BASE_DIR / "credentials/google_service_account.jso
 
 NINE_PROXY_API_URL = env("NINE_PROXY_API_URL", default=None)
 NINE_PROXY_HOST = env("NINE_PROXY_HOST", default=None)
+
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ],
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'PinParser API',
+    'DESCRIPTION': 'API for Pinterest Pin Parser project',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}
