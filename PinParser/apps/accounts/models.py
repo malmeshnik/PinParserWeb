@@ -45,6 +45,10 @@ class PinterestAccount(models.Model):
         blank=True, null=True, verbose_name="Останнє використання"
     )
 
+    user_agent = models.TextField(
+        blank=True, null=True, verbose_name="User-Agent"
+    )
+
     is_active = models.BooleanField(
         default=True, verbose_name="Активний для використання"
     )

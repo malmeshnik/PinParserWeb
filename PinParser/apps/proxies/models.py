@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from loguru import logger
 
 
 # Create your models here.
@@ -16,12 +17,22 @@ class Proxy(models.Model):
         verbose_name="Ім'я проксі",
     )
 
+    is_9proxy = models.BooleanField(
+        default=False,
+        verbose_name="Це динамічне 9Proxy",
+        help_text="Якщо увімкнено, хост та порт будуть отримані автоматично через 9Proxy API"
+    )
+
     host = models.CharField(
         max_length=255,
         verbose_name="Хост проксі",
+        blank=True,
+        null=True,
     )
     port = models.PositiveIntegerField(
         verbose_name="Порт проксі",
+        blank=True,
+        null=True,
     )
 
     country = models.CharField(

@@ -6,8 +6,8 @@ class ProxyAdmin(admin.ModelAdmin):
     def has_module_permission(self, request):
         return request.user.is_superuser
 
-    list_display = ('id', 'name', 'host', 'port', 'country', 'status', 'last_checked_at', 'is_active')
-    list_filter = ('status', 'is_active', 'country')
+    list_display = ('id', 'name', 'host', 'port', 'is_9proxy', 'country', 'status', 'last_checked_at', 'is_active')
+    list_filter = ('is_9proxy', 'status', 'is_active', 'country')
     search_fields = ('name', 'host', 'isp')
 
     actions = ['check_health_action']

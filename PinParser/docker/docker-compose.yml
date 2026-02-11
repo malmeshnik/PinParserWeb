@@ -4,14 +4,14 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "${DB_PORT}:5432"
+      - "5432:5432"
     env_file:
       - ../.env
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
 
   web:
     build:
@@ -25,12 +25,13 @@ services:
     environment:
       - DEBUG=True
       - DB_HOST=db
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://127.0.0.1:6379/0
     depends_on:
       - db
-      - redis
     env_file:
       - ../.env
+    network_mode: host
+
 
   worker:
     build:
@@ -42,12 +43,14 @@ services:
     environment:
       - DEBUG=True
       - DB_HOST=db
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://127.0.0.1:6379/0
     depends_on:
       - db
-      - redis
     env_file:
       - ../.env
+    network_mode: host
+      
+
 
 volumes:
   postgres_data:

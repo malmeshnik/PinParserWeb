@@ -3,7 +3,7 @@ from .models import PinResult
 
 @admin.register(PinResult)
 class PinResultAdmin(admin.ModelAdmin):
-    list_display = ('pin_url', 'task', 'keyword', 'title', 'created_at')
+    list_display = ('pin_url', 'task', 'keyword', 'title', 'utitle', 'slug_url', 'created_at')
     list_filter = ('task', 'keyword')
     search_fields = ('pin_url', 'title', 'description', 'keyword')
     readonly_fields = ('created_at',)

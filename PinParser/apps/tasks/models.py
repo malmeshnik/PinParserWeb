@@ -6,6 +6,7 @@ from django.utils import timezone
 class TaskStatus(models.TextChoices):
     PENDING = "pending", "Очікує"
     RUNNING = "running", "В процесі"
+    UNIQUENESS = "uniqueness", "Унікалізація"
     DONE = "done", "Виконано"
     ERROR = "error", "Помилка"
     STOPPED = "stopped", "Зупинено"

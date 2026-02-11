@@ -28,13 +28,11 @@ def run_pinterest_pipeline(
         proxy = Proxy.objects.filter(id=proxy_id).first()
 
     account = None
-    if account_id:
-        account = PinterestAccount.objects.filter(id=account_id).first()
 
     pipeline = PinterestParsePipeline(
         keywords=keywords,
         proxy=proxy,
-        account=account,
+        account=None,
         max_pins=max_pins,
     )
 
