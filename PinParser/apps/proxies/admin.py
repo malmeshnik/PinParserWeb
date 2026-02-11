@@ -1,21 +1,19 @@
 from django.contrib import admin
 from .models import Proxy
 
-
 @admin.register(Proxy)
 class ProxyAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "name",
-        "host",
-        "port",
-        "country",
-        "status",
-        "fail_count",
-        "is_active",
-        "created_at",
-    )
+    def has_module_permission(self, request):
+        return request.user.is_superuser
 
-    list_filter = ("status", "country", "is_active")
-    search_fields = ("name", "host")
-    readonly_fields = ("fail_count", "last_checked_at", "created_at")
+    list_display = ('id', 'name', 'host', 'port', 'is_9proxy', 'country', 'status', 'last_checked_at', 'is_active')
+    list_filter = ('is_9proxy', 'status', 'is_active', 'country')
+    search_fields = ('name', 'host', 'isp')
+
+    actions = ['check_health_action']
+
+    def check_health_action(self, request, queryset):
+        for proxy in queryset:
+            proxy.check_health()
+        self.message_user(request, "Здоров'я проксі перевірено")
+    check_health_action.short_description = "🧪 Перевірити здоров'я"

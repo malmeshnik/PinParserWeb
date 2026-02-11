@@ -6,14 +6,25 @@ from django.utils import timezone
 class TaskStatus(models.TextChoices):
     PENDING = "pending", "Очікує"
     RUNNING = "running", "В процесі"
+    UNIQUENESS = "uniqueness", "Унікалізація"
     DONE = "done", "Виконано"
     ERROR = "error", "Помилка"
     STOPPED = "stopped", "Зупинено"
 
 
+from django.conf import settings
+
 class ParseTask(models.Model):
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="tasks",
+        verbose_name="Власник",
+        null=True,
+        blank=True
+    )
     name = models.CharField(max_length=255, verbose_name="Назва завдання")
-    keywords = models.JSONField(verbose_name="Ключові слова")
+    keywords = models.JSONField(verbose_name="Ключові слова", default=list)
 
     status = models.CharField(
         max_length=20,
@@ -28,12 +39,21 @@ class ParseTask(models.Model):
     use_uniqueness = models.BooleanField(
         default=False, verbose_name="Використовувати унікальність"
     )
+    auto_sheet_name = models.BooleanField(
+        default=True, verbose_name="Автоматична назва таблиці"
+    )
 
     table_name = models.CharField(
         max_length=255,
         blank=True,
         null=True,
         verbose_name="Назва таблиці результатів",
+    )
+
+    export_file = models.FileField(
+        upload_to="exports/",
+        null=True,
+        blank=True
     )
 
     celery_task_id = models.CharField(
@@ -75,23 +95,26 @@ class ParseTask(models.Model):
         return f"Завдання №{self.id} - {self.name}"
     
     def mark_running(self, celery_task_id: str):
-        self.status = self.Status.RUNNING
+        self.status = TaskStatus.RUNNING
         self.celery_task_id = celery_task_id
+        self.processed_urls = 0
+        self.total_urls = 0
+        self.error_message = None
         self.started_at = timezone.now()
         self.save(update_fields=[
             "status", "celery_task_id", "started_at"
         ])
 
     def mark_success(self, total_parsed: int):
-        self.status = self.Status.SUCCESS
-        self.total_parsed = total_parsed
+        self.status = TaskStatus.DONE
+        self.total_urls = total_parsed
         self.finished_at = timezone.now()
         self.save(update_fields=[
-            "status", "total_parsed", "finished_at"
+            "status", "total_urls", "finished_at"
         ])
 
     def mark_failed(self, error: str):
-        self.status = self.Status.FAILED
+        self.status = TaskStatus.ERROR
         self.error_message = error[:5000]
         self.finished_at = timezone.now()
         self.save(update_fields=[

@@ -15,27 +15,27 @@ class SlugService:
         text = text.encode("ascii", "ignore").decode("ascii")
 
         text = text.lower()
-
         text = re.sub(r"[^a-z0-9]+", "-", text)
-
         text = text.strip("-")
 
         if len(text) > cls.MAX_LENGTH:
-            text = text[: cls.MAX_LENGTH].rstrip("-")
+            text = text[:cls.MAX_LENGTH].rstrip("-")
 
         return text or None
 
     @classmethod
     def build_slug_url(
         cls,
+        *,
         pin_id: Optional[str],
         utitle: Optional[str],
+        base_url: str = "xxx",
     ) -> Optional[str]:
         slug = cls.make_slug(utitle)
         if not slug:
             return None
 
         if pin_id:
-            return f"https://www.pinterest.com/pin/{pin_id}/?slug={slug}"
+            return f"{base_url}/{pin_id}/?slug={slug}"
 
-        return f"?slug={slug}"
+        return f"{base_url}/?{slug}"

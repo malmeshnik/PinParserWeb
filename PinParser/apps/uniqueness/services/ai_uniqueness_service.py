@@ -47,7 +47,13 @@ class AIUniquenessService:
             return
 
         try:
-            data = json.loads(content)
+            match = re.search(r"\{.*\}", content, re.S)
+
+            if not match:
+                raise ValueError("No JSON found")
+            
+            logger.info(f'Find json answer {match}')
+            data = json.loads(match.group())
             pin.utitle = data.get("title")
             pin.udescription = data.get("description")
             pin.save(update_fields=["utitle", "udescription"])
@@ -69,6 +75,8 @@ class AIUniquenessService:
             ctx["annotation"] = pin.annotation or ""
         if self.config.use_domain:
             ctx["domain"] = pin.domain or ""
+        if self.config.use_image_url:
+            ctx["image_url"] = pin.image_url or ""
 
         prompt = self.config.prompt_template
         for k, v in ctx.items():

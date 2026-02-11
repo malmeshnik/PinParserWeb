@@ -4,6 +4,7 @@ from apps.uniqueness.models import UniquenessConfig
 from apps.uniqueness.services.ai_uniqueness_service import AIUniquenessService
 from apps.uniqueness.services.slug_service import SlugService
 from apps.results.models import PinResult
+from apps.tasks.models import TaskStatus, ParseTask
 
 @shared_task
 def run_uniqueness(task_id: int):
@@ -19,7 +20,12 @@ def run_uniqueness(task_id: int):
         utitle__isnull=True,
     )
 
+    task = ParseTask.objects.get(task_id)
+    task.status = TaskStatus.UNIQUENESS
+    task.save(update_fields=["status"])
+
     service = AIUniquenessService(config)
+
     service.process_queryset(qs)
 
 @shared_task
@@ -29,10 +35,14 @@ def generate_slugs(task_id: int):
         slug_url__isnull=True,
         utitle__isnull=False,
     )
+    task = ParseTask.objects.get(task_id)
+    task.status = TaskStatus.UNIQUENESS
+    task.save(update_fields=["status"])
 
     for pin in qs.iterator(chunk_size=200):
         pin.slug_url = SlugService.build_slug_url(
-            pin_id=pin.pin_id,
+            pin_id=None,
             utitle=pin.utitle,
+            base_url="xxx"
         )
         pin.save(update_fields=["slug_url"])

@@ -1,39 +1,57 @@
 from django.contrib import admin
+from django.urls import reverse
 from django.utils.html import format_html
-
+from django import forms
 from .models import ParseTask, TaskStatus
 from .tasks import run_parse_task
-from apps.results.tasks import export_results_to_sheets
+from apps.results.tasks import export_results_to_excel
 from apps.uniqueness.tasks import run_uniqueness, generate_slugs
+
+class ParseTaskForm(forms.ModelForm):
+    keywords_text = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 5}),
+        help_text="Введіть ключові слова, кожне з нового рядка",
+        label="Ключові слова (текст)",
+        required=False
+    )
+
+    class Meta:
+        model = ParseTask
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.keywords:
+            if isinstance(self.instance.keywords, list):
+                self.fields['keywords_text'].initial = "\n".join(self.instance.keywords)
+            else:
+                self.fields['keywords_text'].initial = str(self.instance.keywords)
+
+    def save(self, commit=True):
+        keywords_text = self.cleaned_data.get('keywords_text')
+        if keywords_text:
+            self.instance.keywords = [k.strip() for k in keywords_text.split('\n') if k.strip()]
+        return super().save(commit=commit)
 
 @admin.register(ParseTask)
 class ParseTaskAdmin(admin.ModelAdmin):
-    list_display = (
-        "name",
-        "status_badge",
-        "threads",
-        "progress",
-        "use_uniqueness",
-        "created_at",
-    )
-    list_display_links = ("name",)
-    list_filter = ("status", "use_uniqueness")
-    search_fields = ("name",)
+    form = ParseTaskForm
+    list_display = ('name', 'owner', 'status_badge', 'progress_display', 'error_message', 'view_results_link', 'download_excel', 'created_at')
+    list_filter = ('status', 'created_at', 'use_uniqueness')
+    search_fields = ('name', 'keywords')
+    exclude = ('keywords', 'celery_task_id')
 
     readonly_fields = (
-        "status",
         "error_message",
-        "created_at",
         "started_at",
         "finished_at",
         "processed_urls",
         "total_urls",
-        "celery_task_id",
     )
 
     fieldsets = (
         ("Основне", {
-            "fields": ("name", "keywords", "threads")
+            "fields": ("name", "keywords_text", "threads")
         }),
         ("Опції", {
             "fields": ("use_uniqueness",)
@@ -44,11 +62,10 @@ class ParseTaskAdmin(admin.ModelAdmin):
                 "error_message",
                 "processed_urls",
                 "total_urls",
-                "celery_task_id",
             )
         }),
         ("Дати", {
-            "fields": ("created_at", "started_at", "finished_at")
+            "fields": ("started_at", "finished_at")
         }),
     )
 
@@ -74,34 +91,59 @@ class ParseTaskAdmin(admin.ModelAdmin):
         )
     status_badge.short_description = "Статус"
 
-    def progress(self, obj):
-        if not obj.total_urls:
-            return "—"
-        return f"{obj.processed_urls} / {obj.total_urls}"
-    progress.short_description = "Прогрес"
 
-    @admin.action(description="▶️ Запустити парсинг")
+    actions = ['start_task', 'export_to_excel', 'uniqueness_task', 'generate_slug_task']
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(owner=request.user)
+
+    def save_model(self, request, obj, form, change):
+        if not obj.pk and not obj.owner:
+            obj.owner = request.user
+        super().save_model(request, obj, form, change)
+
+    def download_excel(self, obj):
+        if not obj.export_file:
+            return "-"
+
+        return format_html(
+            '<a class="button" href="{}" download>⬇️ Excel</a>',
+            obj.export_file.url
+        )
+
+    download_excel.short_description = "Excel"
+
+    def view_results_link(self, obj):
+        url = reverse('admin:results_pinresult_changelist') + f'?task__id__exact={obj.id}'
+        return format_html('<a class="button" href="{}">📊 Результати</a>', url)
+    view_results_link.short_description = "Результати"
+
+    def progress_display(self, obj):
+        return obj.results.count()
+    
+    view_results_link.short_description = "Знайдено пінів"
+
     def start_task(self, request, queryset):
         for task in queryset:
-            if task.status in [TaskStatus.RUNNING]:
-                continue
+            if task.status != TaskStatus.RUNNING:
+                run_parse_task.delay(task.id)
+        self.message_user(request, "Завдання запущені")
+    start_task.short_description = "▶️ Запустити вибрані завдання"
 
-            async_result = run_parse_task.delay(task.id)
-            task.celery_task_id = async_result.id
-            task.status = TaskStatus.PENDING
-            task.save(update_fields=["celery_task_id", "status"])
-
-    @admin.action(description="🛑 Зупинити")
-    def stop_task(self, request, queryset):
-        queryset.update(status=TaskStatus.STOPPED)
-
-    @admin.action(description="📤 Експорт у Google Sheets")
-    def export_to_sheets(self, request, queryset):
+    @admin.action(description="📤 Експорт у Excel")
+    def export_to_excel(self, request, queryset):
         for task in queryset:
-            export_results_to_sheets.delay(task.id)
+            export_results_to_excel.delay(task.id)
 
-    @admin.action(description="✨ Запустити Uniqueness + Slug")
-    def run_uniqueness_action(self, request, queryset):
+    @admin.action(description="Унікалізувати")
+    def uniqueness_task(self, request, queryset):
         for task in queryset:
             run_uniqueness.delay(task.id)
+
+    @admin.action(description="Згенерувати slug")
+    def generate_slug_task(self, request, queryset):
+        for task in queryset:
             generate_slugs.delay(task.id)
