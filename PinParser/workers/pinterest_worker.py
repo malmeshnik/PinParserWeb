@@ -10,9 +10,10 @@ from playwright.async_api import TimeoutError as PlaywrightTimeout
 from asgiref.sync import sync_to_async
 from workers.browser_factory import BrowserFactory
 from apps.results.models import PinResult
+from apps.proxies.nine_proxy import NineProxyService
 
 
-SCROLL_PAUSE_RANGE = (4, 8)
+SCROLL_PAUSE_RANGE = (1, 3)
 MAX_SCROLLS_PER_PAGE = 120
 MAX_SAME_HEIGHT = 6
 NETWORK_FLUSH_SIZE = 50
@@ -104,14 +105,26 @@ class PinterestWorker:
             logger.warning(f"[{keyword}] Playwright error: {e}")
             if self.account and self.account.proxy:
                 # Trigger health check on failure
+                logger.warning('Refreshing proxy')
+                nine_proxy = NineProxyService()
+
+                filters = {
+                    "country": self.account.proxy.country,
+                    "state": self.account.proxy.state,
+                    "city": self.account.proxy.city,
+                    "zip": self.account.proxy.zip,
+                    "isp": self.account.proxy.isp,
+                }
+                await sync_to_async(nine_proxy._refresh_proxy)(self.account.proxy, filters)
                 self.account.proxy.check_health()
             raise Exception(f"Connection/Proxy error: {e}")
         except Exception as e:
             error_msg = f"[{keyword}] Error: {e}"
             logger.error(error_msg)
-            self._log_to_db(error_msg)
+            await self._log_to_db(error_msg)
             raise e
         finally:
+            await context.close()
             await browser.close()
             await playwright.stop()
 
@@ -216,6 +229,7 @@ class PinterestWorker:
         except PlaywrightError:
             return None
 
+    @sync_to_async
     def _log_to_db(self, message):
         from apps.logs.models import ErrorLog
         ErrorLog.objects.create(

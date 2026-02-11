@@ -3,7 +3,6 @@ from django.utils import timezone
 from loguru import logger
 
 from apps.tasks.models import ParseTask, TaskStatus
-from apps.accounts.models import PinterestAccount
 from apps.parser.services.pipeline import PinterestParsePipeline
 from apps.results.tasks import export_results_to_excel
 from apps.uniqueness.tasks import run_uniqueness, generate_slugs
@@ -22,12 +21,15 @@ def run_parse_task(self, task_id: int):
         )
 
         parsed_count = pipeline.run()
-        task.mark_success(parsed_count)
 
         if task.use_uniqueness:
             (run_uniqueness.s(task.id) | generate_slugs.si(task.id) | export_results_to_excel.si(task.id)).apply_async()
         else:
             export_results_to_excel.delay(task.id)
+        task.refresh_from_db()
+
+        if task.status != TaskStatus.ERROR:
+            task.mark_success(parsed_count)
 
         return {"parsed": parsed_count}
 

@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from loguru import logger
 
 
 # Create your models here.
