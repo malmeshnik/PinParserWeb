@@ -133,7 +133,7 @@ class PinterestWorker:
                     "isp": self.account.proxy.isp,
                 }
                 await sync_to_async(nine_proxy._refresh_proxy)(self.account.proxy, filters)
-                self.account.proxy.check_health()
+                await sync_to_async(self.account.proxy.check_health)()
             raise Exception(f"Connection/Proxy error: {e}")
         except Exception as e:
             error_msg = f"[{keyword}] Error: {e}"

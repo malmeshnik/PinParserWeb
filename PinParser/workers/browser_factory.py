@@ -19,17 +19,15 @@ class BrowserFactory:
         self.account = account
         self.proxy = account.proxy
         self.headless = headless
-
-        # Use account's UA if set, otherwise pick random and save it to account
-        if account.user_agent:
-            self.user_agent = account.user_agent
-        else:
-            self.user_agent = random.choice(USER_AGENTS)
-            account.user_agent = self.user_agent
-            account.save(update_fields=['user_agent'])
+        self.user_agent = account.user_agent
 
     async def launch(self):
         from apps.proxies.nine_proxy import NineProxyService
+
+        if not self.user_agent:
+            self.user_agent = random.choice(USER_AGENTS)
+            self.account.user_agent = self.user_agent
+            await sync_to_async(self.account.save)(update_fields=['user_agent'])
 
         playwright = await async_playwright().start()
 

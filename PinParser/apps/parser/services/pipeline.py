@@ -5,6 +5,7 @@ from collections import defaultdict
 from loguru import logger
 from django.utils import timezone
 from django.db.models import F
+from asgiref.sync import sync_to_async
 
 from apps.tasks.models import ParseTask, TaskStatus
 from apps.accounts.models import PinterestAccount, AccountStatus
@@ -49,7 +50,7 @@ class PinterestParsePipeline:
 
     def _get_accounts(self):
         return list(
-            PinterestAccount.objects.filter(
+            PinterestAccount.objects.select_related("proxy").filter(
                 is_active=True,
                 status=AccountStatus.ACTIVE
             ).order_by(
@@ -127,7 +128,7 @@ class PinterestParsePipeline:
                         )
                     except Exception as e:
                         errors += 1
-                        self._log_error(
+                        await sync_to_async(self._log_error)(
                             f"Error collecting for keyword {kw}: {e}",
                             account,
                         )
@@ -137,7 +138,7 @@ class PinterestParsePipeline:
             await worker.stop()
 
         self.task.total_urls = total
-        self.task.save(update_fields=["total_urls"])
+        await sync_to_async(self.task.save)(update_fields=["total_urls"])
 
         if keywords and errors == len(keywords) and total == 0:
             raise Exception("Всі запити завершилися з помилкою")
