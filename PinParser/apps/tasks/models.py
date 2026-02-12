@@ -118,7 +118,6 @@ class ParseTask(models.Model):
         self.status = TaskStatus.ERROR
         self.error_message = error[:5000]
         self.finished_at = timezone.now()
-        self.error_message = None
         self.save(update_fields=[
             "status", "error_message", "finished_at"
         ])

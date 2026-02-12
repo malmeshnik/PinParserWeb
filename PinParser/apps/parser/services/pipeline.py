@@ -60,6 +60,9 @@ class PinterestParsePipeline:
 
     def _run_with_account(self, account: PinterestAccount) -> bool:
         for attempt in range(1, 3):
+            if account.status == AccountStatus.ERROR:
+                break
+
             logger.info(
                 f"[PIPELINE] Task #{self.task.id}, "
                 f"Account ID={account.id}, Attempt {attempt}"
@@ -85,12 +88,7 @@ class PinterestParsePipeline:
 
     def _handle_account_failure(self, account: PinterestAccount):
         logger.warning(f"[PIPELINE] Account {account.id} failed, rotating")
-
-        account.fail_count += 1
-        if account.fail_count >= 5:
-            account.status = AccountStatus.ERROR
-
-        account.save(update_fields=["fail_count", "status"])
+        account.register_fail()
 
     async def _collect_all_urls_async(self, account: PinterestAccount) -> int:
         keywords = self.task.keywords
@@ -118,7 +116,13 @@ class PinterestParsePipeline:
         try:
             async def semaphore_wrapper(kw):
                 nonlocal total, errors
+                if errors >= 3:
+                    return
+
                 async with semaphore:
+                    if errors >= 3:
+                        return
+
                     try:
                         urls = await worker.collect_urls_for_keyword(kw)
                         self.urls_by_keyword[kw].update(urls)
@@ -128,10 +132,10 @@ class PinterestParsePipeline:
                         )
                     except Exception as e:
                         errors += 1
-                        await sync_to_async(self._log_error)(
-                            f"Error collecting for keyword {kw}: {e}",
-                            account,
-                        )
+                        # Increment account failure count for each error
+                        await sync_to_async(account.register_fail)()
+                        logger.error(f"[PIPELINE] Error for keyword {kw}: {e}")
+                        # We don't call self._log_error here because worker.collect_urls_for_keyword already logs to DB
 
             await asyncio.gather(*(semaphore_wrapper(kw) for kw in keywords))
         finally:
@@ -139,6 +143,9 @@ class PinterestParsePipeline:
 
         self.task.total_urls = total
         await sync_to_async(self.task.save)(update_fields=["total_urls"])
+
+        if errors >= 3:
+            raise Exception(f"Account encountered {errors} errors, stopping collection.")
 
         if keywords and errors == len(keywords) and total == 0:
             raise Exception("Всі запити завершилися з помилкою")
