@@ -14,8 +14,8 @@ from apps.proxies.nine_proxy import NineProxyService
 
 
 SCROLL_PAUSE_RANGE = (1, 3)
-MAX_SCROLLS_PER_PAGE = 120
-MAX_SAME_HEIGHT = 6
+MAX_SCROLLS_PER_PAGE = 500
+MAX_SAME_HEIGHT = 10
 NETWORK_FLUSH_SIZE = 50
 
 
@@ -24,7 +24,7 @@ class PinterestWorker:
         self.account = account
         self.task = task
         self.headless = headless
-        self.factory = BrowserFactory(account, headless=headless)
+        self.factory = BrowserFactory(account, headless=False)#TODO Change to headless = headless
         self.playwright = None
         self.browser = None
         self.context = None
