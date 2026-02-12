@@ -65,7 +65,7 @@ class PinterestParsePipeline:
             )
 
             try:
-                total = self._collect_all_urls(account)
+                total = asyncio.run(self._collect_all_urls_async(account))
                 if total > 0:
                     return True
 
@@ -91,59 +91,56 @@ class PinterestParsePipeline:
 
         account.save(update_fields=["fail_count", "status"])
 
-    def _collect_all_urls(self, account: PinterestAccount) -> int:
+    async def _collect_all_urls_async(self, account: PinterestAccount) -> int:
         keywords = self.task.keywords
         if isinstance(keywords, str):
             keywords = [keywords]
 
         max_threads = min(3, self.task.threads)
+        semaphore = asyncio.Semaphore(max_threads)
+
         logger.info(
             f"[PIPELINE] Collecting URLs for {len(keywords)} keywords "
-            f"using account ID={account.id}"
+            f"using account ID={account.id} (async, max_threads={max_threads})"
         )
 
-        def job(keyword: str):
-            worker = PinterestWorker(
-                account=account,
-                task=self.task,
-                headless=self.headless,
-            )
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(
-                    worker.collect_urls_for_keyword(keyword)
-                )
-            finally:
-                loop.close()
+        worker = PinterestWorker(
+            account=account,
+            task=self.task,
+            headless=self.headless,
+        )
 
         total = 0
         errors = 0
 
-        with ThreadPoolExecutor(max_workers=max_threads) as executor:
-            futures = {executor.submit(job, kw): kw for kw in keywords}
+        await worker.start()
+        try:
+            async def semaphore_wrapper(kw):
+                nonlocal total, errors
+                async with semaphore:
+                    try:
+                        urls = await worker.collect_urls_for_keyword(kw)
+                        self.urls_by_keyword[kw].update(urls)
+                        total += len(urls)
+                        logger.info(
+                            f"[PIPELINE] Keyword '{kw}' collected {len(urls)} pins"
+                        )
+                    except Exception as e:
+                        errors += 1
+                        self._log_error(
+                            f"Error collecting for keyword {kw}: {e}",
+                            account,
+                        )
 
-            for future in as_completed(futures):
-                kw = futures[future]
-                try:
-                    urls = future.result()
-                    self.urls_by_keyword[kw].update(urls)
-                    total += len(urls)
-                    logger.info(
-                        f"[PIPELINE] Keyword '{kw}' collected {len(urls)} pins"
-                    )
-                except Exception as e:
-                    errors += 1
-                    self._log_error(
-                        f"Error collecting for keyword {kw}: {e}",
-                        account,
-                    )
+            await asyncio.gather(*(semaphore_wrapper(kw) for kw in keywords))
+        finally:
+            await worker.stop()
 
         self.task.total_urls = total
         self.task.save(update_fields=["total_urls"])
 
-        if errors == len(keywords) and total == 0:
-            raise Exception("Всі потоки завершилися з помилкою")
+        if keywords and errors == len(keywords) and total == 0:
+            raise Exception("Всі запити завершилися з помилкою")
 
         return total
 

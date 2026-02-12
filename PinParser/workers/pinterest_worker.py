@@ -25,18 +25,35 @@ class PinterestWorker:
         self.task = task
         self.headless = headless
         self.factory = BrowserFactory(account, headless=headless)
+        self.playwright = None
+        self.browser = None
+        self.context = None
+
+    async def start(self):
+        self.playwright, self.browser, self.context = await self.factory.launch()
+
+    async def stop(self):
+        try:
+            if self.context:
+                await self.context.close()
+            if self.browser:
+                await self.browser.close()
+            if self.playwright:
+                await self.playwright.stop()
+        except Exception as e:
+            logger.warning(f"Error during worker stop: {e}")
 
     async def collect_urls_for_keyword(self, keyword: str) -> list[str]:
-        playwright, browser, context = await self.factory.launch()
+        if not self.context:
+            raise Exception("Browser context not started. Call start() first.")
 
         seen: set[str] = set()
         dom_urls: list[str] = []
 
         network_buffer: list[dict] = []
 
+        page = await self.context.new_page()
         try:
-            page = await context.new_page()
-
             await self._listen_network(
                 page,
                 keyword,
@@ -124,9 +141,7 @@ class PinterestWorker:
             await self._log_to_db(error_msg)
             raise e
         finally:
-            await context.close()
-            await browser.close()
-            await playwright.stop()
+            await page.close()
 
         return dom_urls
 
