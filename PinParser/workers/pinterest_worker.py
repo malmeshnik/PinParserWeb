@@ -14,8 +14,8 @@ from apps.proxies.nine_proxy import NineProxyService
 
 
 SCROLL_PAUSE_RANGE = (1, 3)
-MAX_SCROLLS_PER_PAGE = 120
-MAX_SAME_HEIGHT = 6
+MAX_SCROLLS_PER_PAGE = 500
+MAX_SAME_HEIGHT = 10
 NETWORK_FLUSH_SIZE = 50
 
 
@@ -24,19 +24,36 @@ class PinterestWorker:
         self.account = account
         self.task = task
         self.headless = headless
-        self.factory = BrowserFactory(account, headless=headless)
+        self.factory = BrowserFactory(account, headless=False)#TODO Change to headless = headless
+        self.playwright = None
+        self.browser = None
+        self.context = None
+
+    async def start(self):
+        self.playwright, self.browser, self.context = await self.factory.launch()
+
+    async def stop(self):
+        try:
+            if self.context:
+                await self.context.close()
+            if self.browser:
+                await self.browser.close()
+            if self.playwright:
+                await self.playwright.stop()
+        except Exception as e:
+            logger.warning(f"Error during worker stop: {e}")
 
     async def collect_urls_for_keyword(self, keyword: str) -> list[str]:
-        playwright, browser, context = await self.factory.launch()
+        if not self.context:
+            raise Exception("Browser context not started. Call start() first.")
 
         seen: set[str] = set()
         dom_urls: list[str] = []
 
         network_buffer: list[dict] = []
 
+        page = await self.context.new_page()
         try:
-            page = await context.new_page()
-
             await self._listen_network(
                 page,
                 keyword,
@@ -116,7 +133,7 @@ class PinterestWorker:
                     "isp": self.account.proxy.isp,
                 }
                 await sync_to_async(nine_proxy._refresh_proxy)(self.account.proxy, filters)
-                self.account.proxy.check_health()
+                await sync_to_async(self.account.proxy.check_health)()
             raise Exception(f"Connection/Proxy error: {e}")
         except Exception as e:
             error_msg = f"[{keyword}] Error: {e}"
@@ -124,9 +141,7 @@ class PinterestWorker:
             await self._log_to_db(error_msg)
             raise e
         finally:
-            await context.close()
-            await browser.close()
-            await playwright.stop()
+            await page.close()
 
         return dom_urls
 

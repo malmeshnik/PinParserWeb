@@ -99,7 +99,8 @@ class ParseTask(models.Model):
         self.celery_task_id = celery_task_id
         self.processed_urls = 0
         self.total_urls = 0
-        self.error_message = None
+        self.error_message = ''
+        self.results.all().delete()
         self.started_at = timezone.now()
         self.save(update_fields=[
             "status", "celery_task_id", "started_at"
@@ -117,6 +118,7 @@ class ParseTask(models.Model):
         self.status = TaskStatus.ERROR
         self.error_message = error[:5000]
         self.finished_at = timezone.now()
+        self.error_message = None
         self.save(update_fields=[
             "status", "error_message", "finished_at"
         ])
