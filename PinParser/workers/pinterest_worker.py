@@ -24,7 +24,7 @@ class PinterestWorker:
         self.account = account
         self.task = task
         self.headless = headless
-        self.factory = BrowserFactory(account, headless=False)#TODO Change to headless = headless
+        self.factory = BrowserFactory(account, headless=headless)
         self.playwright = None
         self.browser = None
         self.context = None
@@ -119,7 +119,9 @@ class PinterestWorker:
             )
 
         except (PlaywrightTimeout, PlaywrightError) as e:
-            logger.warning(f"[{keyword}] Playwright error: {e}")
+            error_msg = f"[{keyword}] Connection/Proxy error: {e}"
+            logger.warning(error_msg)
+            await self._log_to_db(error_msg)
             if self.account and self.account.proxy:
                 # Trigger health check on failure
                 logger.warning('Refreshing proxy')
@@ -134,7 +136,7 @@ class PinterestWorker:
                 }
                 await sync_to_async(nine_proxy._refresh_proxy)(self.account.proxy, filters)
                 await sync_to_async(self.account.proxy.check_health)()
-            raise Exception(f"Connection/Proxy error: {e}")
+            raise Exception(error_msg)
         except Exception as e:
             error_msg = f"[{keyword}] Error: {e}"
             logger.error(error_msg)

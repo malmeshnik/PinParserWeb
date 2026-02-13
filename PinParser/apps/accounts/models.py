@@ -63,6 +63,17 @@ class PinterestAccount(models.Model):
     def __str__(self):
         return f"Аккаунт №{self.id} - {self.name}"
 
+    def register_fail(self):
+        self.fail_count += 1
+        if self.fail_count >= 3:
+            self.status = AccountStatus.ERROR
+        self.save(update_fields=["fail_count", "status"])
+
+    def reset_fail(self):
+        self.fail_count = 0
+        self.status = AccountStatus.ACTIVE
+        self.save(update_fields=["fail_count", "status"])
+
     def rotate_proxy(self):
         from apps.proxies.models import Proxy, ProxyStatus
         new_proxy = Proxy.objects.filter(
