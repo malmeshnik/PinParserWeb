@@ -24,7 +24,7 @@ class PinterestWorker:
         self.account = account
         self.task = task
         self.headless = headless
-        self.factory = BrowserFactory(account, headless=False)#TODO Change to headless = headless
+        self.factory = BrowserFactory(account, headless=headless)
         self.playwright = None
         self.browser = None
         self.context = None
