@@ -77,6 +77,8 @@ class AIUniquenessService:
             ctx["domain"] = pin.domain or ""
         if self.config.use_image_url:
             ctx["image_url"] = pin.image_url or ""
+        if self.config.use_keyword:
+            ctx["keyword"] = pin.keyword or ""
 
         prompt = self.config.prompt_template
         for k, v in ctx.items():

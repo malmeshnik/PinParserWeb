@@ -1,6 +1,8 @@
 from pathlib import Path
 import environ
 
+from celery.schedules import crontab
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env(
@@ -133,4 +135,11 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'API for Pinterest Pin Parser project',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+}
+
+CELERY_BEAT_SCHEDULE = {
+    "cleanup-old-error-logs-every-day": {
+        "task": "apps.logs.tasks.cleanup_old_logs",
+        "schedule": crontab(hour=3, minute=0),
+    },
 }

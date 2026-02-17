@@ -13,42 +13,42 @@ services:
   #   ports:
   #     - "6379:6379"
 
-  web:
-    build:
-      context: ..
-      dockerfile: docker/django.DockerFile
-    command: python manage.py runserver 0.0.0.0:8000
-    volumes:
-      - ..:/app
-    ports:
-      - "8000:8000"
-    environment:
-      - DEBUG=True
-      - DB_HOST=db
-      - REDIS_URL=redis://127.0.0.1:6379/0
-    depends_on:
-      - db
-    env_file:
-      - ../.env
-    network_mode: host
+  # web:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/django.DockerFile
+  #   command: python manage.py runserver 0.0.0.0:8000
+  #   volumes:
+  #     - ..:/app
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     - DEBUG=True
+  #     - DB_HOST=db
+  #     - REDIS_URL=redis://127.0.0.1:6379/0
+  #   depends_on:
+  #     - db
+  #   env_file:
+  #     - ../.env
+  #   network_mode: host
 
 
-  worker:
-    build:
-      context: ..
-      dockerfile: docker/worker.DockerFile
-    command: celery -A config worker -l info
-    volumes:
-      - ..:/app
-    environment:
-      - DEBUG=True
-      - DB_HOST=db
-      - REDIS_URL=redis://127.0.0.1:6379/0
-    depends_on:
-      - db
-    env_file:
-      - ../.env
-    network_mode: host
+  # worker:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/worker.DockerFile
+  #   command: celery -A config worker -l info
+  #   volumes:
+  #     - ..:/app
+  #   environment:
+  #     - DEBUG=True
+  #     - DB_HOST=db
+  #     - REDIS_URL=redis://127.0.0.1:6379/0
+  #   depends_on:
+  #     - db
+  #   env_file:
+  #     - ../.env
+  #   network_mode: host
       
 
 

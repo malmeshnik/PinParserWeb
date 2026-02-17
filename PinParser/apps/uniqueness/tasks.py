@@ -8,25 +8,27 @@ from apps.tasks.models import TaskStatus, ParseTask
 
 @shared_task
 def run_uniqueness(task_id: int):
-    config = UniquenessConfig.objects.filter(
-        is_active=True
-    ).first()
-
-    if not config:
-        return
-    
     qs = PinResult.objects.filter(
         task_id=task_id,
         utitle__isnull=True,
     )
 
-    task = ParseTask.objects.get(task_id)
+    task = ParseTask.objects.get(id=task_id)
     task.status = TaskStatus.UNIQUENESS
     task.save(update_fields=["status"])
+
+    if task.uniqueness_config:
+        config = task.uniqueness_config
+    else:
+        config = UniquenessConfig.objects.filter(is_active=True).first()
+
+    if not config:
+        return
 
     service = AIUniquenessService(config)
 
     service.process_queryset(qs)
+    task.mark_success(None)
 
 @shared_task
 def generate_slugs(task_id: int):

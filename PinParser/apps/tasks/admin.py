@@ -1,6 +1,11 @@
+import zipfile
+import os
+from io import BytesIO
+
 from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
+from django.http import HttpResponse
 from django import forms
 from .models import ParseTask, TaskStatus
 from .tasks import run_parse_task
@@ -36,6 +41,7 @@ class ParseTaskForm(forms.ModelForm):
 @admin.register(ParseTask)
 class ParseTaskAdmin(admin.ModelAdmin):
     form = ParseTaskForm
+    change_form_template = "admin/tasks/parsetask/change_form.html"
     list_display = ('name', 'owner', 'status_badge', 'progress_display', 'error_message', 'view_results_link', 'download_excel', 'created_at')
     list_filter = ('status', 'created_at', 'use_uniqueness')
     search_fields = ('name', 'keywords')
@@ -54,7 +60,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
             "fields": ("name", "keywords_text", "threads")
         }),
         ("Опції", {
-            "fields": ("use_uniqueness",)
+            "fields": ("use_uniqueness", "uniqueness_config")
         }),
         ("Статус", {
             "fields": (
@@ -68,13 +74,6 @@ class ParseTaskAdmin(admin.ModelAdmin):
             "fields": ("started_at", "finished_at")
         }),
     )
-
-    actions = [
-        "start_task",
-        "stop_task",
-        "export_to_sheets",
-        "run_uniqueness_action",
-    ]
 
     def status_badge(self, obj):
         colors = {
@@ -92,7 +91,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
     status_badge.short_description = "Статус"
 
 
-    actions = ['start_task', 'export_to_excel', 'uniqueness_task', 'generate_slug_task']
+    actions = ['start_task', 'export_to_excel', 'uniqueness_task', 'generate_slug_task', 'download_files']
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -147,3 +146,44 @@ class ParseTaskAdmin(admin.ModelAdmin):
     def generate_slug_task(self, request, queryset):
         for task in queryset:
             generate_slugs.delay(task.id)
+
+    @admin.action(description="⬇️ Завантажити вибрані файли")
+    def download_files(self, request, queryset):
+        files = queryset.exclude(export_file="")
+
+        if not files.exists():
+            self.message_user(request, "Немає файлів для завантаження")
+            return
+
+        if files.count() == 1:
+            task = files.first()
+            response = HttpResponse(
+                task.export_file.read(),
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            response['Content-Disposition'] = f'attachment; filename="{os.path.basename(task.export_file.name)}"'
+            return response
+
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w") as zip_file:
+            for task in files:
+                file_path = task.export_file.path
+                if os.path.exists(file_path):
+                    zip_file.write(
+                        file_path,
+                        arcname=os.path.basename(file_path)
+                    )
+
+        buffer.seek(0)
+
+        response = HttpResponse(buffer, content_type="application/zip")
+        response['Content-Disposition'] = 'attachment; filename="tasks_export.zip"'
+        return response
+
+    def response_add(self, request, obj, post_url_continue=None):
+        if "_save_and_run" in request.POST:
+            run_parse_task.delay(obj.id)
+            self.message_user(request, "Завдання збережено і запущено 🚀")
+            return super().response_add(request, obj, post_url_continue)
+
+        return super().response_add(request, obj, post_url_continue)

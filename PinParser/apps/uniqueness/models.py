@@ -32,7 +32,7 @@ class UniquenessConfig(models.Model):
         ),
         help_text=(
             "Доступні змінні:\n"
-            "{{title}}, {{description}}, {{alt_text}}, {{annotation}}, {{domain}}, {{image_url}}"
+            "{{title}}, {{description}}, {{alt_text}}, {{annotation}}, {{domain}}, {{image_url}}, {{keyword}}"
         ),
     )
 
@@ -42,6 +42,7 @@ class UniquenessConfig(models.Model):
     use_annotation = models.BooleanField(default=True)
     use_domain = models.BooleanField(default=False)
     use_image_url = models.BooleanField(default=False)
+    use_keyword = models.BooleanField(default=False)
 
     max_requests_per_minute = models.PositiveSmallIntegerField(
         default=450,

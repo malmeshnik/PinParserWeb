@@ -34,10 +34,18 @@ class ParseTask(models.Model):
     )
 
     threads = models.PositiveSmallIntegerField(
-        default=1, verbose_name="Кількість потоків"
+        default=3, verbose_name="Кількість потоків"
     )
     use_uniqueness = models.BooleanField(
         default=False, verbose_name="Використовувати унікальність"
+    )
+    uniqueness_config = models.ForeignKey(
+        "uniqueness.UniquenessConfig",
+        on_delete=models.SET_NULL,
+        related_name="parse_task",
+        null=True,
+        blank=True,
+        verbose_name="Конфіг унікалізації"
     )
     auto_sheet_name = models.BooleanField(
         default=True, verbose_name="Автоматична назва таблиці"

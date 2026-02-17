@@ -8,7 +8,7 @@ from apps.results.tasks import export_results_to_excel
 from apps.uniqueness.tasks import run_uniqueness, generate_slugs
 
 
-@shared_task(bind=True)
+@shared_task(bind=True, time_limit=10800)
 def run_parse_task(self, task_id: int):
     task = ParseTask.objects.get(id=task_id)
 
