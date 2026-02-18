@@ -57,7 +57,7 @@ class ExcelWriter:
         export_dir = Path(settings.MEDIA_ROOT) / "exports"
         export_dir.mkdir(parents=True, exist_ok=True)
 
-        filename = f"task_{task.id}_results.xlsx"
+        filename = f"{task.name}.xlsx"
         filepath = export_dir / filename
 
         wb.save(filepath)

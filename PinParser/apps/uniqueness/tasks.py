@@ -28,7 +28,7 @@ def run_uniqueness(task_id: int):
     service = AIUniquenessService(config)
 
     service.process_queryset(qs)
-    task.mark_success(None)
+    task.mark_success(1)
 
 @shared_task
 def generate_slugs(task_id: int):
