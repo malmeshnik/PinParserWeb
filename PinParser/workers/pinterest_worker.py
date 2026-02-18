@@ -5,12 +5,9 @@ import random
 from urllib.parse import urlparse
 from loguru import logger
 from playwright.async_api import Error as PlaywrightError
-from playwright.async_api import TimeoutError as PlaywrightTimeout
 
 from asgiref.sync import sync_to_async
 from workers.browser_factory import BrowserFactory
-from apps.results.models import PinResult
-from apps.proxies.nine_proxy import NineProxyService
 
 
 SCROLL_PAUSE_RANGE = (1, 3)
@@ -48,17 +45,15 @@ class PinterestWorker:
             raise Exception("Browser context not started. Call start() first.")
 
         seen: set[str] = set()
-        dom_urls: list[str] = []
-
-        network_buffer: list[dict] = []
+        collected_urls: list[str] = []
 
         page = await self.context.new_page()
+
         try:
             await self._listen_network(
                 page,
-                keyword,
                 seen,
-                network_buffer,
+                collected_urls,
             )
 
             logger.info(f"[{keyword}] Starting search")
@@ -70,10 +65,7 @@ class PinterestWorker:
 
             if response and not response.ok:
                 logger.warning(f"[{keyword}] Page load failed: {response.status}")
-                if response.status == 429:
-                    raise Exception("Rate limited (429)")
-                if response.status >= 500:
-                    raise Exception(f"Pinterest server error ({response.status})")
+                raise Exception(f"Pinterest error {response.status}")
 
             await asyncio.sleep(3)
 
@@ -82,19 +74,11 @@ class PinterestWorker:
             scrolls = 0
 
             while scrolls < MAX_SCROLLS_PER_PAGE:
-                await self._extract_pins_dom(page, dom_urls, seen)
 
-                if len(network_buffer) >= NETWORK_FLUSH_SIZE:
-                    await self._flush_network_buffer(keyword, network_buffer)
+                await self._extract_pins_dom(page, collected_urls, seen)
 
                 await page.mouse.wheel(0, random.randint(600, 1200))
                 await asyncio.sleep(random.uniform(*SCROLL_PAUSE_RANGE))
-
-                if random.random() < 0.2:
-                    await page.mouse.move(
-                        random.randint(100, 900),
-                        random.randint(100, 700)
-                    )
 
                 new_height = await self._safe_get_scroll_height(page)
                 if new_height is None:
@@ -111,49 +95,23 @@ class PinterestWorker:
                 if same_height_count >= MAX_SAME_HEIGHT:
                     break
 
-            if network_buffer:
-                await self._flush_network_buffer(keyword, network_buffer)
+            logger.info(f"[{keyword}] Done. Total URLs: {len(collected_urls)}")
 
-            logger.info(
-                f"[{keyword}] Done. DOM fallback URLs: {len(dom_urls)}"
-            )
-
-        except (PlaywrightTimeout, PlaywrightError) as e:
-            error_msg = f"[{keyword}] Connection/Proxy error: {e}"
-            logger.warning(error_msg)
-            await self._log_to_db(error_msg)
-            if self.account and self.account.proxy:
-                # Trigger health check on failure
-                logger.warning('Refreshing proxy')
-                nine_proxy = NineProxyService()
-
-                filters = {
-                    "country": self.account.proxy.country,
-                    "state": self.account.proxy.state,
-                    "city": self.account.proxy.city,
-                    "zip": self.account.proxy.zip,
-                    "isp": self.account.proxy.isp,
-                }
-                await sync_to_async(nine_proxy._refresh_proxy)(self.account.proxy, filters)
-                await sync_to_async(self.account.proxy.check_health)()
-            raise Exception(error_msg)
         except Exception as e:
-            error_msg = f"[{keyword}] Error: {e}"
-            logger.error(error_msg)
-            await self._log_to_db(error_msg)
+            logger.error(f"[{keyword}] Error: {e}")
             raise e
         finally:
             await page.close()
 
-        return dom_urls
+        return collected_urls
+
 
 
     async def _listen_network(
         self,
         page,
-        keyword: str,
         seen: set[str],
-        buffer: list[dict],
+        bucket: list[str],
     ):
         async def handle_response(response):
             if "BaseSearchResource/get" not in response.url:
@@ -177,52 +135,13 @@ class PinterestWorker:
                     continue
 
                 pin_url = f"https://www.pinterest.com/pin/{pin_id}/"
-                if pin_url in seen:
-                    continue
 
-                seen.add(pin_url)
-                buffer.append(pin)
+                if pin_url not in seen:
+                    seen.add(pin_url)
+                    bucket.append(pin_url)
 
         page.on("response", handle_response)
 
-
-    async def _flush_network_buffer(self, keyword: str, buffer: list[dict]):
-        objects = []
-
-        for pin in buffer:
-            pin_id = pin.get("id")
-
-            if not pin_id or not pin_id.isdigit():
-                continue
-
-            images = pin.get("images", {})
-            orig = images.get("orig", {})
-
-            objects.append(
-                PinResult(
-                    task=self.task,
-                    keyword=keyword,
-                    pin_id=pin_id,
-                    pin_url=f"https://www.pinterest.com/pin/{pin_id}/",
-                    title=pin.get("title"),
-                    description=pin.get("description"),
-                    image_url=orig.get("url"),
-                    domain=pin.get("domain"),
-                    alt_text=pin.get("grid_title"),
-                    annotation=pin.get("board", {}).get("name"),
-                    saves=pin.get("reaction_counts", {}).get("1"),
-                    pinner_username=pin.get("pinner", {}).get("username"),
-                    creation_date=pin.get("created_at"),
-                )
-            )
-
-        await sync_to_async(PinResult.objects.bulk_create)(
-            objects,
-            ignore_conflicts=True,
-            batch_size=500,
-        )
-
-        buffer.clear()
 
 
     async def _extract_pins_dom(self, page, bucket: list[str], seen: set[str]):
