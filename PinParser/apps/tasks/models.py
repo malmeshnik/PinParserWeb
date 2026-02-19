@@ -14,6 +14,18 @@ class TaskStatus(models.TextChoices):
 
 from django.conf import settings
 
+def get_default_uniqueness_config():
+        from apps.uniqueness.models import UniquenessConfig
+
+        config = (
+            UniquenessConfig.objects
+            .filter(is_active=True)
+            .order_by("id")
+            .first()
+        )
+
+        return config.id if config else None
+
 class ParseTask(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -37,7 +49,7 @@ class ParseTask(models.Model):
         default=3, verbose_name="Кількість потоків"
     )
     use_uniqueness = models.BooleanField(
-        default=False, verbose_name="Використовувати унікальність"
+        default=True, verbose_name="Використовувати унікальність"
     )
     uniqueness_config = models.ForeignKey(
         "uniqueness.UniquenessConfig",
@@ -45,6 +57,7 @@ class ParseTask(models.Model):
         related_name="parse_task",
         null=True,
         blank=True,
+        default=get_default_uniqueness_config,
         verbose_name="Конфіг унікалізації"
     )
     auto_sheet_name = models.BooleanField(

@@ -37,7 +37,7 @@ def generate_slugs(task_id: int):
         slug_url__isnull=True,
         utitle__isnull=False,
     )
-    task = ParseTask.objects.get(task_id)
+    task = ParseTask.objects.get(id = task_id)
     task.status = TaskStatus.UNIQUENESS
     task.save(update_fields=["status"])
 
@@ -48,3 +48,5 @@ def generate_slugs(task_id: int):
             base_url="xxx"
         )
         pin.save(update_fields=["slug_url"])
+
+    task.mark_success(1)
