@@ -153,4 +153,32 @@ python manage.py createsuperuser
 
 ---
 
+## 10. Установка 9proxy
+
+```bash
+wget https://static.9proxy-cdn.net/download/latest/linux/9proxy-linux-debian-amd64.deb
+sudo apt install ./9proxy-linux-debian-amd64.deb9
+systemctl start 9proxyd.service
+```
+
+---
+
+## Авторизация в 9proxy и настройка
+
+```bash
+9proxy auth -s
+9proxy api -s
+9proxy api -d
+```
+
+<img width="640" height="520" alt="Screenshot from 2026-02-19 11-26-58" src="https://github.com/user-attachments/assets/72657c73-a16c-4e0e-a091-dcdd8292f6b3" />
+
+берем этот адрес
+
+<img width="348" height="37" alt="Screenshot from 2026-02-19 11-28-00" src="https://github.com/user-attachments/assets/bb5a0ac2-a518-414e-806d-173ea5a0aaa3" />
+
+И отак вставляем в .env файл
+
+---
+
 > ✅ Приложение запущено и готово к работе!
