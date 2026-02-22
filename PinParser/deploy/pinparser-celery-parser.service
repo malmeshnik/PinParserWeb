@@ -1,0 +1,15 @@
+[Unit]
+Description=PinParser Celery Parser Worker
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/PinParser/PinParser
+Environment="PATH=/root/PinParser/PinParser/venv/bin"
+ExecStart=/root/PinParser/PinParser/venv/bin/celery -A config worker -Q parser --loglevel=info --concurrency=4 -n parser@%h
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

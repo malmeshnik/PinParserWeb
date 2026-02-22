@@ -87,7 +87,7 @@ class PinParser:
     
     def _get_username(self, pin: dict) -> Optional[str]:
         for key in ("pinner", "originPinner", "nativeCreator"):
-            user = pin.get(key)
+            user = pin.get(key) or {}
             if isinstance(user, dict):
                 return user.get("username")
         return None

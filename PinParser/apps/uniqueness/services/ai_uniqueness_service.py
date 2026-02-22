@@ -5,6 +5,7 @@ import threading
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from django.core.cache import cache
 from openai import OpenAI, RateLimitError
 from loguru import logger
 
@@ -52,7 +53,6 @@ class AIUniquenessService:
             if not match:
                 raise ValueError("No JSON found")
             
-            logger.info(f'Find json answer {match}')
             data = json.loads(match.group())
             pin.utitle = data.get("title")
             pin.udescription = data.get("description")

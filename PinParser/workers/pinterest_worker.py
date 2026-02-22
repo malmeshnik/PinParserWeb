@@ -1,10 +1,11 @@
-# workers/pinterest_worker.py
-
+from asgiref.sync import sync_to_async
 import asyncio
 import random
 from urllib.parse import urlparse
 from loguru import logger
 from playwright.async_api import Error as PlaywrightError
+
+from django.core.cache import cache
 
 from asgiref.sync import sync_to_async
 from workers.browser_factory import BrowserFactory
@@ -56,6 +57,9 @@ class PinterestWorker:
                 collected_urls,
             )
 
+            if self._should_stop():
+                return []
+
             logger.info(f"[{keyword}] Starting search")
 
             response = await page.goto(
@@ -74,6 +78,9 @@ class PinterestWorker:
             scrolls = 0
 
             while scrolls < MAX_SCROLLS_PER_PAGE:
+                if self._should_stop():
+                    logger.info(f"[{keyword}] Stopping by user request")
+                    break
 
                 await self._extract_pins_dom(page, collected_urls, seen)
 
@@ -181,3 +188,6 @@ class PinterestWorker:
         if len(parts) >= 2 and parts[0] == "pin":
             return f"https://www.pinterest.com/pin/{parts[1]}/"
         return None
+
+    def _should_stop(self) -> bool:
+        return cache.get(f"stop_task_{self.task.id}") is True

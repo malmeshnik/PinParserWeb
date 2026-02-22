@@ -1,4 +1,5 @@
 from celery import shared_task
+from loguru import logger
 
 from apps.uniqueness.models import UniquenessConfig
 from apps.uniqueness.services.ai_uniqueness_service import AIUniquenessService
@@ -14,6 +15,11 @@ def run_uniqueness(task_id: int):
     )
 
     task = ParseTask.objects.get(id=task_id)
+    
+    logger.info(f"Task Status: {task.status}")
+    if task.status in (TaskStatus.ERROR, TaskStatus.STOPPED):
+        return 
+    
     task.status = TaskStatus.UNIQUENESS
     task.save(update_fields=["status"])
 
@@ -28,7 +34,7 @@ def run_uniqueness(task_id: int):
     service = AIUniquenessService(config)
 
     service.process_queryset(qs)
-    task.mark_success(1)
+    task.mark_success()
 
 @shared_task
 def generate_slugs(task_id: int):
@@ -37,7 +43,12 @@ def generate_slugs(task_id: int):
         slug_url__isnull=True,
         utitle__isnull=False,
     )
-    task = ParseTask.objects.get(id = task_id)
+    task = ParseTask.objects.get(id=task_id)
+
+    logger.info(f"Task Status: {task.status}")
+    if task.status in (TaskStatus.ERROR, TaskStatus.STOPPED):
+        return 
+    
     task.status = TaskStatus.UNIQUENESS
     task.save(update_fields=["status"])
 
@@ -49,4 +60,4 @@ def generate_slugs(task_id: int):
         )
         pin.save(update_fields=["slug_url"])
 
-    task.mark_success(1)
+    task.mark_success()

@@ -6,6 +6,7 @@ from django.utils import timezone
 class TaskStatus(models.TextChoices):
     PENDING = "pending", "Очікує"
     RUNNING = "running", "В процесі"
+    WAITING_UNIQUENESS = 'waiting_uniqueness', "Очікує унікалізації",
     UNIQUENESS = "uniqueness", "Унікалізація"
     DONE = "done", "Виконано"
     ERROR = "error", "Помилка"
@@ -124,12 +125,11 @@ class ParseTask(models.Model):
         self.results.all().delete()
         self.started_at = timezone.now()
         self.save(update_fields=[
-            "status", "celery_task_id", "started_at"
+            "status", "celery_task_id", "started_at", "error_message", "total_urls"
         ])
 
-    def mark_success(self, total_parsed: int):
+    def mark_success(self):
         self.status = TaskStatus.DONE
-        self.total_urls = total_parsed
         self.finished_at = timezone.now()
         self.save(update_fields=[
             "status", "total_urls", "finished_at"
@@ -150,3 +150,7 @@ class ParseTask(models.Model):
         self.save(update_fields=[
             "processed_urls", "total_urls"
         ])
+
+    def mark_wait_uniqueness(self):
+        self.status = TaskStatus.WAITING_UNIQUENESS
+        self.save(update_fields=['status'])

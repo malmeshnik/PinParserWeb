@@ -1,0 +1,19 @@
+[Unit]
+Description=PinParser Celery Export Worker
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/PinParser/PinParser
+Environment="PATH=/root/PinParser/PinParser/venv/bin"
+Environment="DJANGO_SETTINGS_MODULE=config.settings.dev"
+Environment="PYTHONUNBUFFERED=1"
+
+ExecStart=/root/PinParser/PinParser/venv/bin/celery -A config worker -Q export --loglevel=info --concurrency=1 -n export@%h
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

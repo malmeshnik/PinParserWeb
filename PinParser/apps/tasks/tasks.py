@@ -1,5 +1,4 @@
 from celery import shared_task
-from django.utils import timezone
 from loguru import logger
 
 from apps.tasks.models import ParseTask, TaskStatus
@@ -22,14 +21,19 @@ def run_parse_task(self, task_id: int):
 
         parsed_count = pipeline.run()
 
+        task.refresh_from_db()
+        if task.status == TaskStatus.STOPPED:
+            return {"parsed": parsed_count}
+        
         if task.use_uniqueness:
+            task.mark_wait_uniqueness()
             (run_uniqueness.s(task.id) | generate_slugs.si(task.id) | export_results_to_excel.si(task.id)).apply_async()
         else:
             export_results_to_excel.delay(task.id)
         task.refresh_from_db()
 
         if task.status != TaskStatus.ERROR:
-            task.mark_success(parsed_count)
+            task.mark_success()
 
         return {"parsed": parsed_count}
 

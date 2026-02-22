@@ -1,0 +1,2 @@
+class TaskAlreadyRunning(Exception):
+    pass

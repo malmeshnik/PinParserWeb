@@ -5,6 +5,7 @@ from collections import defaultdict
 from loguru import logger
 from django.utils import timezone
 from django.db.models import F
+from django.core.cache import cache
 from asgiref.sync import sync_to_async
 
 from apps.tasks.models import ParseTask, TaskStatus
@@ -32,13 +33,19 @@ class PinterestParsePipeline:
             return 0
 
         for account in accounts:
-            logger.info(f"[PIPELINE] Trying account ID={account.id}")
+            if self._should_stop():
+                logger.info(f"Task {self.task.name} Stopping by user request")
+                msg = "Зупинено адміном"
+                break
+
+            account.last_used_at = timezone.now()
+            account.save(update_fields=["last_used_at"])
 
             success = self._run_with_account(account)
+            
+            logger.info(f"[PIPELINE] Trying account ID={account.id}")
 
             if success:
-                account.last_used_at = timezone.now()
-                account.save(update_fields=["last_used_at"])
                 self._fetch_and_parse_pins(account)
                 return self.task.processed_urls
 
@@ -125,8 +132,13 @@ class PinterestParsePipeline:
 
                     try:
                         urls = await worker.collect_urls_for_keyword(kw)
-                        self.urls_by_keyword[kw].update(urls)
-                        total += len(urls)
+
+                        new_count = len(urls)
+
+                        if new_count > 0:
+                            self.urls_by_keyword[kw].update(urls)
+                            total += new_count
+                            await self._increment_total_urls(new_count)
                         logger.info(
                             f"[PIPELINE] Keyword '{kw}' collected {len(urls)} pins"
                         )
@@ -181,7 +193,8 @@ class PinterestParsePipeline:
             ]
 
             for future in as_completed(futures):
-                if self.task.status == TaskStatus.STOPPED:
+                if self._should_stop():
+                    logger.info(f"Stopping by user request")
                     break
 
                 data = future.result()
@@ -215,3 +228,15 @@ class PinterestParsePipeline:
             account=account,
             message=message[:5000],
         )
+
+    def _should_stop(self) -> bool:
+        return cache.get(f"stop_task_{self.task.id}") is True
+    
+    @sync_to_async
+    def _increment_total_urls(self, amount: int):
+        ParseTask.objects.filter(id=self.task.id).update(
+            total_urls=F("total_urls") + amount
+        )
+
+    def _should_stop(self) -> bool:
+        return cache.get(f"stop_task_{self.task.id}") is True

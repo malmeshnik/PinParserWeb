@@ -1,4 +1,4 @@
-# apps/results/services/excel_writer.py
+import re
 
 from openpyxl import Workbook
 from django.conf import settings
@@ -8,6 +8,7 @@ from pathlib import Path
 from apps.results.models import PinResult
 from apps.tasks.models import ParseTask
 
+ILLEGAL_CHARACTERS_RE = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F]")
 
 class ExcelWriter:
     HEADERS = [
@@ -37,7 +38,7 @@ class ExcelWriter:
         qs = PinResult.objects.filter(task=task).order_by("id")
 
         for pin in qs.iterator(chunk_size=500):
-            ws.append([
+            ws.append(self.clean_row([
                 pin.keyword,
                 pin.pin_url,
                 pin.title,
@@ -52,7 +53,7 @@ class ExcelWriter:
                 pin.saves,
                 pin.pinner_username,
                 pin.creation_date,
-            ])
+            ]))
 
         export_dir = Path(settings.MEDIA_ROOT) / "exports"
         export_dir.mkdir(parents=True, exist_ok=True)
@@ -70,3 +71,9 @@ class ExcelWriter:
         )
 
         return str(filepath)
+
+    def clean_row(self, row):
+        return [
+            ILLEGAL_CHARACTERS_RE.sub("", v) if isinstance(v, str) else v
+            for v in row
+        ]

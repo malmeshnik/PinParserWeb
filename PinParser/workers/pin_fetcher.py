@@ -1,4 +1,5 @@
 import random
+from django.core.cache import cache
 import time
 from typing import Optional
 from asgiref.sync import sync_to_async
@@ -39,6 +40,7 @@ class PinFetcher:
         last_response = None
         for attempt in range(1, self.max_retries + 1):
             try:
+                
                 response = self.session.get(
                     pin_url,
                     timeout=self.timeout,
@@ -62,8 +64,6 @@ class PinFetcher:
                 logger.warning(
                     f"[PIN FETCH] Attempt {attempt} failed | {e}"
                 )
-                if self.account and self.account.proxy:
-                    self.account.proxy.check_health()
                 self._rotate_everything()
 
             time.sleep(random.uniform(*self.delay_range))
@@ -95,9 +95,6 @@ class PinFetcher:
             self.account.user_agent = new_ua
             self.account.save(update_fields=['user_agent'])
 
-        if self.account and self.account.rotate_proxy():
-            self._apply_proxy(self.account.proxy)
-
     def _prepare_session(self):
         ua = self.account.user_agent if self.account and self.account.user_agent else random.choice(USER_AGENTS)
 
@@ -111,34 +108,6 @@ class PinFetcher:
             "Connection": "keep-alive",
         })
 
-        if self.account.proxy:
-            self._apply_proxy(self.account.proxy)
-
-    def _apply_proxy(self, proxy):
-        from apps.proxies.nine_proxy import NineProxyService
-
-        proxy_url = None
-        if proxy.is_9proxy:
-            nine_proxy = NineProxyService()
-            filters = {
-                "country": proxy.country,
-                "state": proxy.state,
-                "city": proxy.city,
-                "zip": proxy.zip,
-                "isp": proxy.isp,
-            }
-            proxiy= nine_proxy.get_proxy(proxy, filters=filters)
-            if proxiy:
-                proxy_url = f"http://{proxy.host}:{proxy.port}"
-        else:
-            proxy_url = f"http://{proxy.host}:{proxy.port}"
-
-        if proxy_url:
-            self.session.proxies.update({
-                "http": proxy_url,
-                "https": proxy_url,
-            })
-            logger.info(f"[PIN FETCH] Applied proxy: {proxy_url}")
 
     def _is_valid_response(self, response: Response) -> bool:
         if response.status_code != 200:
@@ -153,3 +122,6 @@ class PinFetcher:
             return True
 
         return False
+        
+    def _should_stop(self) -> bool:
+        return cache.get(f"stop_task_{self.task.id}") is True

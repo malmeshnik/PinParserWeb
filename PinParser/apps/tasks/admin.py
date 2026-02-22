@@ -2,15 +2,21 @@ import zipfile
 import os
 from io import BytesIO
 
+from django.core.cache import cache
 from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 from django.http import HttpResponse
 from django import forms
+from celery.result import AsyncResult
 from .models import ParseTask, TaskStatus
 from .tasks import run_parse_task
+from .errors import TaskAlreadyRunning
 from apps.results.tasks import export_results_to_excel
 from apps.uniqueness.tasks import run_uniqueness, generate_slugs
+from config.celery import app
+from apps.accounts.models import PinterestAccount, AccountStatus
+from apps.proxies.models import Proxy, ProxyStatus
 
 class ParseTaskForm(forms.ModelForm):
     keywords_text = forms.CharField(
@@ -91,7 +97,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
     status_badge.short_description = "Статус"
 
 
-    actions = ['start_task', 'export_to_excel', 'uniqueness_task', 'generate_slug_task', 'download_files']
+    actions = ['start_tasks', 'stop_task', 'export_to_excel', 'uniqueness_task', 'generate_slug_task', 'download_files']
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -121,16 +127,54 @@ class ParseTaskAdmin(admin.ModelAdmin):
     view_results_link.short_description = "Результати"
 
     def progress_display(self, obj):
-        return obj.results.count()
-    
-    view_results_link.short_description = "Знайдено пінів"
+        parsed = obj.results.count()
+        return f"{parsed}/{obj.total_urls}"
+    progress_display.short_description = "Вдало оброблено/Знайдено пінів"
 
-    def start_task(self, request, queryset):
+    def start_tasks(self, request, queryset):
+        PinterestAccount.objects.update(status=AccountStatus.ACTIVE)
+        Proxy.objects.update(status=ProxyStatus.ACTIVE)
+
         for task in queryset:
-            if task.status != TaskStatus.RUNNING:
-                run_parse_task.delay(task.id)
+
+            if task.celery_task_id:
+                self.start_task(request, task)
+
         self.message_user(request, "Завдання запущені")
-    start_task.short_description = "▶️ Запустити вибрані завдання"
+    start_tasks.short_description = "▶️ Запустити вибрані завдання"
+
+    def stop_task(self, request, queryset):
+
+        stopped = 0
+
+        for task in queryset:
+
+            if not task.celery_task_id:
+                continue
+
+            if task.status == TaskStatus.RUNNING:
+                cache.set(f"stop_task_{task.id}", True, timeout=3600)
+                app.control.revoke(task.celery_task_id)
+
+            elif task.status in (
+                TaskStatus.UNIQUENESS,
+            ):
+                app.control.revoke(
+                    task.celery_task_id,
+                    terminate=True,
+                    signal="SIGTERM",
+                )
+
+            else:
+                continue
+
+            task.status = TaskStatus.STOPPED
+            task.save(update_fields=["status"])
+
+            stopped += 1
+
+        self.message_user(request, f"Зупинено задач: {stopped}")
+    stop_task.short_description = "⛔ Зупинити виконання вибраних завдань"
 
     @admin.action(description="📤 Експорт у Excel")
     def export_to_excel(self, request, queryset):
@@ -182,8 +226,24 @@ class ParseTaskAdmin(admin.ModelAdmin):
 
     def response_add(self, request, obj, post_url_continue=None):
         if "_save_and_run" in request.POST:
-            run_parse_task.delay(obj.id)
+            self.start_task(request, obj)
             self.message_user(request, "Завдання збережено і запущено 🚀")
             return super().response_add(request, obj, post_url_continue)
 
         return super().response_add(request, obj, post_url_continue)
+    
+    def start_task(self, request, task):
+        if task.celery_task_id:
+            result = AsyncResult(task.celery_task_id, app=app)
+
+            if result.status in ("PENDING", "STARTED", "RETRY"):
+                self.message_user(
+                    request,
+                    level="WARNING",
+                    message=f"Task {task.id} вже в роботі"
+                )
+
+        result = run_parse_task.delay(task.id)
+        task.celery_task_id = result.id
+        task.status = TaskStatus.RUNNING
+        task.save(update_fields=["celery_task_id", "status"])
