@@ -48,6 +48,17 @@ class PinParser:
             return None
         
     def _map_pin(self, pin: dict, pin_url: str, keyword: str) -> dict:
+        if not isinstance(pin, dict):
+            return None
+
+        aggregated = pin.get("aggregatedPinData") or {}
+        if not isinstance(aggregated, dict):
+            aggregated = {}
+
+        stats = aggregated.get("aggregatedStats") or {}
+        if not isinstance(stats, dict):
+            stats = {}
+
         return {
             "pin_url": pin_url,
             "keyword": keyword,
@@ -63,11 +74,7 @@ class PinParser:
             "domain": pin.get("domain"),
             "pinner_username": self._get_username(pin),
 
-            "saves": (
-                pin.get("aggregatedPinData", {})
-                   .get("aggregatedStats", {})
-                   .get("saves")
-            ),
+            "saves": stats.get("saves"),
 
             "creation_date": pin.get("createdAt"),
             "annotation": self._join_annotations(pin),
