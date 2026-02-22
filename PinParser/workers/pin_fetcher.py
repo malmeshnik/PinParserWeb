@@ -40,7 +40,7 @@ class PinFetcher:
         last_response = None
         for attempt in range(1, self.max_retries + 1):
             try:
-                
+
                 response = self.session.get(
                     pin_url,
                     timeout=self.timeout,
@@ -71,11 +71,6 @@ class PinFetcher:
         error_msg = f"[PIN FETCH] Failed after retries | {pin_url}"
         logger.error(error_msg)
         self._log_to_db(error_msg)
-
-        if self.account:
-            # If it's a block (403, 429) or a connection error (no last_response), increment fail count
-            if last_response is None or last_response.status_code in [403, 429]:
-                self.account.register_fail()
 
         return None
 
