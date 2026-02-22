@@ -8,7 +8,7 @@ from apps.results.models import PinResult
 from apps.tasks.models import TaskStatus, ParseTask
 
 @shared_task
-def run_uniqueness(task_id: int):
+def run_uniqueness(task_id: int, time_limit=10800):
     qs = PinResult.objects.filter(
         task_id=task_id,
         utitle__isnull=True,
