@@ -194,6 +194,8 @@ class PinterestParsePipeline:
 
             for future in as_completed(futures):
                 if self._should_stop():
+                    
+                    executor.shutdown(wait=False, cancel_futures=True)
                     logger.info(f"Stopping by user request")
                     break
 

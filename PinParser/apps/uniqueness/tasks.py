@@ -16,7 +16,6 @@ def run_uniqueness(task_id: int, time_limit=10800):
 
     task = ParseTask.objects.get(id=task_id)
     
-    logger.info(f"Task Status: {task.status}")
     if task.status in (TaskStatus.ERROR, TaskStatus.STOPPED):
         return 
     
@@ -31,7 +30,7 @@ def run_uniqueness(task_id: int, time_limit=10800):
     if not config:
         return
 
-    service = AIUniquenessService(config)
+    service = AIUniquenessService(task, config)
 
     service.process_queryset(qs)
     task.mark_success()
@@ -45,7 +44,6 @@ def generate_slugs(task_id: int):
     )
     task = ParseTask.objects.get(id=task_id)
 
-    logger.info(f"Task Status: {task.status}")
     if task.status in (TaskStatus.ERROR, TaskStatus.STOPPED):
         return 
     

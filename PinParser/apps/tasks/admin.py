@@ -137,8 +137,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
 
         for task in queryset:
 
-            if task.celery_task_id:
-                self.start_task(request, task)
+            self.start_task(request, task)
 
         self.message_user(request, "Завдання запущені")
     start_tasks.short_description = "▶️ Запустити вибрані завдання"
