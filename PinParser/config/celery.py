@@ -13,4 +13,11 @@ app.conf.task_routes = {
     "apps.results.tasks.*": {"queue": "export"},
 }
 
+app.conf.broker_transport_options = {
+    "visibility_timeout": 14400,
+}
+
+app.conf.task_acks_late = True
+app.conf.task_reject_on_worker_lost = True
+
 app.autodiscover_tasks()
