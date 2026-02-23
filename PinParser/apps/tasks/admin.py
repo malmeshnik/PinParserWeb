@@ -233,18 +233,6 @@ class ParseTaskAdmin(admin.ModelAdmin):
     
     def start_task(self, request, task):
 
-        lock_key = f"parse_task_lock_{task.id}"
-
-        if cache.get(lock_key):
-            self.message_user(
-                request,
-                level="WARNING",
-                message=f"Task {task.id} вже виконується"
-            )
-            return
-            
-        cache.set(lock_key, True, timeout=10800)
-
         result = run_parse_task.delay(task.id)
 
         task.celery_task_id = result.id
