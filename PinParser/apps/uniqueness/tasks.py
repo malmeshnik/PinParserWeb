@@ -7,8 +7,8 @@ from apps.uniqueness.services.slug_service import SlugService
 from apps.results.models import PinResult
 from apps.tasks.models import TaskStatus, ParseTask
 
-@shared_task
-def run_uniqueness(task_id: int, time_limit=10800):
+@shared_task(bind=True)
+def run_uniqueness(self, task_id: int, mark_done: bool = True):
     qs = PinResult.objects.filter(
         task_id=task_id,
         utitle__isnull=True,
@@ -20,23 +20,31 @@ def run_uniqueness(task_id: int, time_limit=10800):
         return 
     
     task.status = TaskStatus.UNIQUENESS
-    task.save(update_fields=["status"])
+    task.celery_task_id = self.request.id
+    task.save(update_fields=["status", "celery_task_id"])
 
-    if task.uniqueness_config:
-        config = task.uniqueness_config
-    else:
-        config = UniquenessConfig.objects.filter(is_active=True).first()
+    try:
+        if task.uniqueness_config:
+            config = task.uniqueness_config
+        else:
+            config = UniquenessConfig.objects.filter(is_active=True).first()
 
-    if not config:
-        return
+        if not config:
+            return
 
-    service = AIUniquenessService(task, config)
+        service = AIUniquenessService(task, config)
 
-    service.process_queryset(qs)
-    task.mark_success()
+        service.process_queryset(qs)
 
-@shared_task
-def generate_slugs(task_id: int):
+        if mark_done:
+            task.mark_success()
+    except Exception as e:
+        logger.exception(f"Uniqueness task {task_id} failed")
+        task.mark_failed(str(e))
+        raise
+
+@shared_task(bind=True)
+def generate_slugs(self, task_id: int, mark_done: bool = True):
     qs = PinResult.objects.filter(
         task_id=task_id,
         slug_url__isnull=True,
@@ -48,14 +56,21 @@ def generate_slugs(task_id: int):
         return 
     
     task.status = TaskStatus.UNIQUENESS
-    task.save(update_fields=["status"])
+    task.celery_task_id = self.request.id
+    task.save(update_fields=["status", "celery_task_id"])
 
-    for pin in qs.iterator(chunk_size=200):
-        pin.slug_url = SlugService.build_slug_url(
-            pin_id=None,
-            utitle=pin.utitle,
-            base_url="xxx"
-        )
-        pin.save(update_fields=["slug_url"])
+    try:
+        for pin in qs.iterator(chunk_size=200):
+            pin.slug_url = SlugService.build_slug_url(
+                pin_id=None,
+                utitle=pin.utitle,
+                base_url="xxx"
+            )
+            pin.save(update_fields=["slug_url"])
 
-    task.mark_success()
+        if mark_done:
+            task.mark_success()
+    except Exception as e:
+        logger.exception(f"Generate slugs task {task_id} failed")
+        task.mark_failed(str(e))
+        raise

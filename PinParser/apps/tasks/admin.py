@@ -147,30 +147,25 @@ class ParseTaskAdmin(admin.ModelAdmin):
         stopped = 0
 
         for task in queryset:
-
-            if not task.celery_task_id:
-                continue
-
-            if task.status == TaskStatus.RUNNING:
-                cache.set(f"stop_task_{task.id}", True, timeout=3600)
-                app.control.revoke(task.celery_task_id)
-
-            elif task.status in (
+            if task.status in (
+                TaskStatus.RUNNING,
+                TaskStatus.WAITING_UNIQUENESS,
                 TaskStatus.UNIQUENESS,
             ):
-                app.control.revoke(
-                    task.celery_task_id,
-                    terminate=True,
-                    signal="SIGTERM",
-                )
+                if task.status == TaskStatus.RUNNING:
+                    cache.set(f"stop_task_{task.id}", True, timeout=3600)
 
-            else:
-                continue
+                if task.celery_task_id:
+                    app.control.revoke(
+                        task.celery_task_id,
+                        terminate=True,
+                        signal="SIGTERM",
+                    )
 
-            task.status = TaskStatus.STOPPED
-            task.save(update_fields=["status"])
-
-            stopped += 1
+                task.status = TaskStatus.STOPPED
+                task.celery_task_id = None
+                task.save(update_fields=["status", "celery_task_id"])
+                stopped += 1
 
         self.message_user(request, f"Зупинено задач: {stopped}")
     stop_task.short_description = "⛔ Зупинити виконання вибраних завдань"
@@ -226,15 +221,24 @@ class ParseTaskAdmin(admin.ModelAdmin):
     def response_add(self, request, obj, post_url_continue=None):
         if "_save_and_run" in request.POST:
             self.start_task(request, obj)
-            self.message_user(request, "Завдання збережено і запущено 🚀")
             return super().response_add(request, obj, post_url_continue)
 
         return super().response_add(request, obj, post_url_continue)
-    
+
+    def response_change(self, request, obj):
+        if "_save_and_run" in request.POST:
+            self.start_task(request, obj)
+            return super().response_change(request, obj)
+
+        return super().response_change(request, obj)
+
     def start_task(self, request, task):
+        if task.status in (TaskStatus.RUNNING, TaskStatus.WAITING_UNIQUENESS, TaskStatus.UNIQUENESS):
+            return
 
         result = run_parse_task.delay(task.id)
 
         task.celery_task_id = result.id
         task.status = TaskStatus.RUNNING
         task.save(update_fields=["celery_task_id", "status"])
+        self.message_user(request, f"Завдання {task.id} запущено 🚀")

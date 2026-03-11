@@ -39,15 +39,12 @@ def run_parse_task(self, task_id: int):
         if task.use_uniqueness:
             task.mark_wait_uniqueness()
             (
-                run_uniqueness.s(task.id)
-                | generate_slugs.si(task.id)
+                run_uniqueness.s(task.id, mark_done=False)
+                | generate_slugs.si(task.id, mark_done=False)
                 | export_results_to_excel.si(task.id)
             ).apply_async()
         else:
             export_results_to_excel.delay(task.id)
-
-        if task.status != TaskStatus.ERROR:
-            task.mark_success()
 
         return {"parsed": parsed_count}
 
@@ -61,7 +58,3 @@ def run_parse_task(self, task_id: int):
 
         if current_lock == self.request.id:
             cache.delete(lock_key)
-
-        task.refresh_from_db()
-        task.celery_task_id = None
-        task.save(update_fields=["celery_task_id"])

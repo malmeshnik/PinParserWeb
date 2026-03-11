@@ -130,16 +130,18 @@ class ParseTask(models.Model):
     def mark_success(self):
         self.status = TaskStatus.DONE
         self.finished_at = timezone.now()
+        self.celery_task_id = None
         self.save(update_fields=[
-            "status", "total_urls", "finished_at"
+            "status", "total_urls", "finished_at", "celery_task_id"
         ])
 
     def mark_failed(self, error: str):
         self.status = TaskStatus.ERROR
         self.error_message = error[:5000]
         self.finished_at = timezone.now()
+        self.celery_task_id = None
         self.save(update_fields=[
-            "status", "error_message", "finished_at"
+            "status", "error_message", "finished_at", "celery_task_id"
         ])
 
     def update_progress(self, processed: int, total: int | None = None):
