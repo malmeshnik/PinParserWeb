@@ -20,7 +20,7 @@ class PinParser:
                 return None
 
             try:
-                pin = relay_json["data"]["v3GetPinQuery"]["data"]
+                pin = relay_json["data"]["v3GetPinQueryv2"]["data"]
             except KeyError:
                 logger.warning(f"[PIN PARSER] Invalid Relay structure | {pin_url}")
                 return None

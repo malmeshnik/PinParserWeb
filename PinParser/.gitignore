@@ -4,3 +4,7 @@ credentials
 venv
 db.sqlite3
 media
+celery_worker.log
+celery.log
+celery@vmi3094373:
+celerybeat-schedule
