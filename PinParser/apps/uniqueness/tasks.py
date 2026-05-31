@@ -7,7 +7,7 @@ from apps.uniqueness.services.slug_service import SlugService
 from apps.results.models import PinResult
 from apps.tasks.models import TaskStatus, ParseTask
 
-@shared_task(bind=True)
+@shared_task(bind=True, time_limit=10800)
 def run_uniqueness(self, task_id: int, mark_done: bool = True):
     qs = PinResult.objects.filter(
         task_id=task_id,

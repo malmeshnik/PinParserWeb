@@ -28,6 +28,27 @@ class PinterestWorker:
     async def start(self):
         self.playwright, self.browser, self.context = await self.factory.launch()
 
+        # 🔥 ПРОВЕРКА ПРОКСИ
+        try:
+            page = await self.context.new_page()
+
+            resp = await page.goto("https://ipinfo.io/json", timeout=15000)
+            data = await resp.json()
+
+            logger.info(f"""
+[PROXY CHECK]
+IP: {data.get('ip')}
+Country: {data.get('country')}
+City: {data.get('city')}
+Org: {data.get('org')}
+""")
+
+            await page.close()
+
+        except Exception as e:
+            logger.error(f"[PROXY ERROR] Proxy not working: {e}")
+            raise Exception("Proxy failed, stopping worker")
+
     async def stop(self):
         try:
             if self.context:
@@ -103,6 +124,7 @@ class PinterestWorker:
             last_height = await self._get_height(page)
             same_height = 0
             scrolls = 0
+            first_scroll_done = False
 
             while scrolls < MAX_SCROLLS_PER_PAGE:
 

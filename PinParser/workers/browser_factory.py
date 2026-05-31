@@ -6,11 +6,6 @@ from playwright.async_api import async_playwright
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:123.0) Gecko/20100101 Firefox/123.0",
 ]
 
 
@@ -24,7 +19,8 @@ class BrowserFactory:
     async def launch(self):
         from apps.proxies.nine_proxy import NineProxyService
 
-        if not self.user_agent:
+        # 🔥 нормальний UA
+        if not self.user_agent or "Firefox" in self.user_agent:
             self.user_agent = random.choice(USER_AGENTS)
             self.account.user_agent = self.user_agent
             await sync_to_async(self.account.save)(update_fields=['user_agent'])
@@ -33,14 +29,23 @@ class BrowserFactory:
 
         launch_kwargs = {
             "headless": self.headless,
+            "args": [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-infobars",
+                "--start-maximized",
+            ]
         }
 
         current_proxy = self.proxy
-        proxy_url = None
 
         if current_proxy:
+            proxy_url = None
+
             if current_proxy.is_9proxy:
                 nine_proxy = NineProxyService()
+
                 filters = {
                     "country": current_proxy.country,
                     "state": current_proxy.state,
@@ -48,17 +53,27 @@ class BrowserFactory:
                     "zip": current_proxy.zip,
                     "isp": current_proxy.isp,
                 }
-                proxy = await sync_to_async(nine_proxy.get_proxy)(current_proxy, filters=filters)
+
+                proxy = await sync_to_async(nine_proxy.get_proxy)(
+                    current_proxy, filters=filters
+                )
+
                 if proxy:
                     proxy_url = f"http://{proxy.host}:{proxy.port}"
-                    logger.info(f"Using dynamic 9Proxy: {proxy_url} for {current_proxy}")
+                    launch_kwargs["proxy"] = {
+                        "server": proxy_url,
+                    }
+
+                    logger.info(f"Using 9Proxy: {proxy_url}")
+
             else:
                 proxy_url = f"http://{current_proxy.host}:{current_proxy.port}"
 
-        if proxy_url:
-            launch_kwargs["proxy"] = {
-                "server": proxy_url,
-            }
+                launch_kwargs["proxy"] = {
+                    "server": proxy_url,
+                    "username": current_proxy.username,
+                    "password": current_proxy.password,
+                }
 
         logger.info(
             f"Launching browser | UA={self.user_agent} | Proxy={current_proxy}"
@@ -68,10 +83,35 @@ class BrowserFactory:
 
         context = await browser.new_context(
             user_agent=self.user_agent,
-            viewport={"width": 1280, "height": 800},
+            viewport=None,  # 👈 важливо
+            locale="en-US",
+            timezone_id="America/New_York",
         )
+
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+
+            window.chrome = {
+                runtime: {}
+            };
+
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en']
+            });
+
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5]
+            });
+            """)
 
         if self.account.cookies:
             await context.add_cookies(self.account.cookies)
+
+        page = await context.new_page()
+        await page.goto("https://www.pinterest.com/", timeout=30000)
+        await page.wait_for_timeout(random.randint(3000, 6000))
+        await page.close()
 
         return playwright, browser, context

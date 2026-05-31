@@ -35,6 +35,22 @@ class Proxy(models.Model):
         null=True,
     )
 
+    username = models.CharField(
+        max_length=255,
+        verbose_name="Користувач проксі",
+        blank=True,
+        null=True,
+        help_text="Якщо проксі вимагає аутентифікації, вкажіть ім'я користувача"
+    )
+
+    password = models.CharField(
+        max_length=255,
+        verbose_name="Пароль проксі",
+        blank=True,
+        null=True,
+        help_text="Якщо проксі вимагає аутентифікації, вкажіть пароль"
+    )
+
     country = models.CharField(
         max_length=50, verbose_name="Країна проксі", blank=True, null=True
     )
