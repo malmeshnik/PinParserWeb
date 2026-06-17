@@ -98,27 +98,45 @@ def test_autopost_config(config: AutoPostConfig) -> dict:
     webhook_url = f"http://localhost:80/api/v1/publish/{config.webhook_token}/"
 
     try:
+        # Додаємо параметр wait=true для синхронної відповіді
         response = requests.post(
             webhook_url,
             json=payload,
-            timeout=30,
+            params={'wait': 'true', 'timeout': '60'},
+            timeout=65,  # Трохи більше ніж timeout на сервері
         )
 
-        if response.status_code in (200, 201, 202):
-            logger.success(f"[AUTOPOST TEST] Тестовий пін #{pin.id} успішно відправлено")
+        response_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+
+        if response.status_code == 200 and response_data.get('status') == 'success':
+            # Пін успішно опубліковано
+            logger.success(f"[AUTOPOST TEST] Тестовий пін #{pin.id} успішно опубліковано")
             return {
                 "success": True,
                 "pin_id": pin.id,
                 "title": final_title,
-                "response_status": response.status_code
+                "response_status": response.status_code,
+                "message": "Пін успішно опубліковано на Pinterest"
             }
-        else:
-            error_msg = f"HTTP {response.status_code}: {response.text[:500]}"
-            logger.error(f"[AUTOPOST TEST] Помилка відправки піна #{pin.id} | {error_msg}")
+        elif response.status_code == 202:
+            # Task прийнято але ще обробляється (timeout)
+            task_id = response_data.get('task_id', '')
+            logger.warning(f"[AUTOPOST TEST] Пін #{pin.id} все ще обробляється. Task ID: {task_id}")
             return {
                 "success": False,
                 "pin_id": pin.id,
-                "error": error_msg
+                "error": f"Таймаут: пін все ще обробляється (Task ID: {task_id}). Перевірте статус пізніше."
+            }
+        else:
+            # Помилка публікації
+            error_message = response_data.get('message', response.text[:500])
+            error_type = response_data.get('error', 'unknown_error')
+
+            logger.error(f"[AUTOPOST TEST] Помилка відправки піна #{pin.id} | HTTP {response.status_code}: {error_type}")
+            return {
+                "success": False,
+                "pin_id": pin.id,
+                "error": f"Помилка публікації ({error_type}): {error_message}"
             }
     except requests.exceptions.RequestException as e:
         error_msg = f"Помилка з'єднання: {str(e)}"
