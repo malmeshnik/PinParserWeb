@@ -8,8 +8,7 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from .models import ParseTask, TaskStatus, AutoPostConfig, AutoPostStatus
 from .serializers import ParseTaskSerializer, CreateTaskSerializer
-from .tasks import run_parse_task
-from .tasks.autopost_task import initialize_autopost_queue
+from .tasks import run_parse_task, initialize_autopost_queue
 from config.celery import app
 
 @extend_schema(tags=['Tasks'])

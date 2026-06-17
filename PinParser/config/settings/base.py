@@ -143,7 +143,7 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=3, minute=0),
     },
     "process-autopost-queue-every-3-minutes": {
-        "task": "apps.tasks.tasks.autopost_task.process_autopost_queue",
+        "task": "apps.tasks.tasks.process_autopost_queue",
         "schedule": crontab(minute='*/3'),
     },
 }
