@@ -77,6 +77,14 @@
                 </button>
             </form>
             {% endif %}
+
+            <form method="post" style="display: inline; margin-left: 10px;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="test">
+                <button type="submit" class="button" style="background-color: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer;">
+                    🧪 Тест
+                </button>
+            </form>
         </div>
     </div>
 
@@ -88,7 +96,7 @@
             <h2>Налаштування</h2>
 
             <fieldset class="module aligned">
-                <div class="form-row">
+                <div class="form-row field-webhook_token">
                     <div>
                         <label for="{{ form.webhook_token.id_for_label }}">{{ form.webhook_token.label }}:</label>
                         {{ form.webhook_token }}
@@ -101,7 +109,7 @@
                     </div>
                 </div>
 
-                <div class="form-row">
+                <div class="form-row field-board_name">
                     <div>
                         <label for="{{ form.board_name.id_for_label }}">{{ form.board_name.label }}:</label>
                         {{ form.board_name }}
@@ -114,7 +122,7 @@
                     </div>
                 </div>
 
-                <div class="form-row">
+                <div class="form-row field-min_interval">
                     <div>
                         <label for="{{ form.min_interval.id_for_label }}">{{ form.min_interval.label }}:</label>
                         {{ form.min_interval }}
@@ -127,7 +135,7 @@
                     </div>
                 </div>
 
-                <div class="form-row">
+                <div class="form-row field-max_interval">
                     <div>
                         <label for="{{ form.max_interval.id_for_label }}">{{ form.max_interval.label }}:</label>
                         {{ form.max_interval }}
@@ -140,7 +148,7 @@
                     </div>
                 </div>
 
-                <div class="form-row">
+                <div class="form-row field-site_url">
                     <div>
                         <label for="{{ form.site_url.id_for_label }}">{{ form.site_url.label }}:</label>
                         {{ form.site_url }}
@@ -153,7 +161,7 @@
                     </div>
                 </div>
 
-                <div class="form-row">
+                <div class="form-row field-use_uniqueness">
                     <div>
                         <label for="{{ form.use_uniqueness.id_for_label }}">{{ form.use_uniqueness.label }}:</label>
                         {{ form.use_uniqueness }}
@@ -163,7 +171,7 @@
                     </div>
                 </div>
 
-                <div class="form-row">
+                <div class="form-row field-groq_api_key">
                     <div>
                         <label for="{{ form.groq_api_key.id_for_label }}">{{ form.groq_api_key.label }}:</label>
                         {{ form.groq_api_key }}
@@ -176,7 +184,7 @@
                     </div>
                 </div>
 
-                <div class="form-row">
+                <div class="form-row field-groq_prompt">
                     <div>
                         <label for="{{ form.groq_prompt.id_for_label }}">{{ form.groq_prompt.label }}:</label>
                         {{ form.groq_prompt }}
@@ -191,7 +199,7 @@
             </fieldset>
 
             <div class="submit-row">
-                <input type="submit" value="💾 Зберегти налаштування" class="default" />
+                <input type="submit" value="Зберегти налаштування" class="default" />
                 <a href="{% url 'admin:tasks_parsetask_change' task.id %}" class="button cancel-link">Скасувати</a>
             </div>
         </div>

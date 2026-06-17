@@ -223,7 +223,7 @@ def _process_single_post(item: AutoPostQueue):
         "board_name": config.board_name,
     }
 
-    webhook_url = f"http://207.180.197.231:8008/api/v1/publish/{config.webhook_token}/"
+    webhook_url = f"http://localhost:80/api/v1/publish/{config.webhook_token}/"
 
     response = requests.post(
         webhook_url,
@@ -278,3 +278,120 @@ def _check_completion():
                 f"[AUTOPOST] Завершено для завдання #{config.task.id} | "
                 f"Опубліковано: {config.posted_count}/{config.total_count}"
             )
+
+
+@shared_task
+def test_autopost_pin(autopost_config_id: int):
+    """
+    Тестовий task для перевірки налаштувань автопостингу.
+    Відправляє перший невідправлений пін з результатів завдання.
+
+    Args:
+        autopost_config_id: ID конфігурації автопостингу
+    """
+    try:
+        config = AutoPostConfig.objects.select_related('task').get(id=autopost_config_id)
+    except AutoPostConfig.DoesNotExist:
+        logger.error(f"[AUTOPOST TEST] Конфігурацію {autopost_config_id} не знайдено")
+        return {"success": False, "error": "Конфігурацію не знайдено"}
+
+    logger.info(f"[AUTOPOST TEST] Тестовий пост для завдання #{config.task.id}")
+
+    # Знаходимо перший пін який ще не був відправлений
+    # Спочатку шукаємо в черзі (якщо черга існує)
+    pending_queue_item = AutoPostQueue.objects.filter(
+        config=config,
+        status=PostQueueStatus.PENDING
+    ).order_by('scheduled_at').first()
+
+    if pending_queue_item:
+        pin = pending_queue_item.pin
+        logger.info(f"[AUTOPOST TEST] Використовуємо пін #{pin.id} з черги")
+    else:
+        # Якщо черги немає, беремо перший пін з результатів
+        pin = PinResult.objects.filter(task=config.task).order_by('id').first()
+
+        if not pin:
+            logger.warning(f"[AUTOPOST TEST] Немає пінів для тесту в завданні #{config.task.id}")
+            return {"success": False, "error": "Немає пінів для тесту"}
+
+        logger.info(f"[AUTOPOST TEST] Використовуємо пін #{pin.id} з результатів")
+
+    # Обробляємо пін аналогічно до _process_single_post
+    final_title = pin.title or ""
+    final_description = pin.description or ""
+    final_slug_url = ""
+
+    if config.use_uniqueness and config.groq_api_key and final_title:
+        groq_service = GroqUniquenessService(
+            api_key=config.groq_api_key,
+            prompt_template=config.groq_prompt or ""
+        )
+
+        logger.info(f"[AUTOPOST TEST] Унікалізація піна #{pin.id}")
+        unique_data = groq_service.uniquify(
+            title=final_title,
+            description=final_description,
+            alt_text=pin.alt_text or "",
+            annotation=pin.annotation or "",
+        )
+
+        if unique_data:
+            final_title = unique_data["title"]
+            final_description = unique_data["description"]
+
+            slug_text = GroqUniquenessService.generate_slug(final_title)
+            final_slug_url = f"{config.site_url}{slug_text}"
+        else:
+            logger.warning(f"[AUTOPOST TEST] Не вдалося унікалізувати пін #{pin.id}")
+            slug_text = GroqUniquenessService.generate_slug(final_title)
+            final_slug_url = f"{config.site_url}{slug_text}"
+    else:
+        if final_title:
+            slug_text = GroqUniquenessService.generate_slug(final_title)
+            final_slug_url = f"{config.site_url}{slug_text}"
+
+    image_url = pin.image_url or ""
+
+    # Відправляємо на webhook
+    payload = {
+        "title": final_title,
+        "description": final_description,
+        "link": final_slug_url,
+        "image_url": image_url,
+        "board_name": config.board_name,
+    }
+
+    webhook_url = f"http://localhost:80/api/v1/publish/{config.webhook_token}/"
+
+    try:
+        response = requests.post(
+            webhook_url,
+            json=payload,
+            timeout=30,
+        )
+
+        if response.status_code in (200, 201):
+            logger.success(f"[AUTOPOST TEST] Тестовий пін #{pin.id} успішно відправлено")
+            return {
+                "success": True,
+                "pin_id": pin.id,
+                "title": final_title,
+                "response_status": response.status_code
+            }
+        else:
+            error_msg = f"HTTP {response.status_code}: {response.text[:500]}"
+            logger.error(f"[AUTOPOST TEST] Помилка відправки піна #{pin.id} | {error_msg}")
+            return {
+                "success": False,
+                "pin_id": pin.id,
+                "error": error_msg
+            }
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"[AUTOPOST TEST] Exception при відправці піна #{pin.id}: {error_msg}")
+        return {
+            "success": False,
+            "pin_id": pin.id,
+            "error": error_msg
+        }

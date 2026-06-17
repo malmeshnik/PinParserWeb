@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from .models import ParseTask, TaskStatus, AutoPostConfig, AutoPostStatus
 from .serializers import ParseTaskSerializer, CreateTaskSerializer
-from .tasks import run_parse_task, initialize_autopost_queue
+from .tasks import run_parse_task, initialize_autopost_queue, test_autopost_pin
 from config.celery import app
 
 @extend_schema(tags=['Tasks'])
@@ -124,6 +124,15 @@ def autopost_settings_view(request, task_id):
                 messages.success(request, "Автопостинг зупинено")
             else:
                 messages.warning(request, "Автопостинг не запущено")
+            return redirect('autopost_settings', task_id=task_id)
+
+        elif action_type == 'test':
+            if not config.webhook_token or not config.board_name:
+                messages.error(request, "Заповніть webhook токен та назву дошки перед тестом")
+            else:
+                # Викликаємо тестовий task
+                test_autopost_pin.delay(config.id)
+                messages.success(request, "Тест запущено. Перший пін буде відправлено найближчим часом.")
             return redirect('autopost_settings', task_id=task_id)
 
     else:
