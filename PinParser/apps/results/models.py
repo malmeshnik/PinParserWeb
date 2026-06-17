@@ -57,6 +57,13 @@ class PinResult(models.Model):
         null=True,
     )
 
+    local_image = models.ImageField(
+        upload_to="pins/",
+        blank=True,
+        null=True,
+        verbose_name="Локальне фото",
+    )
+
     alt_text = models.TextField(blank=True, null=True)
 
     domain = models.CharField(

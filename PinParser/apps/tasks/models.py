@@ -13,6 +13,21 @@ class TaskStatus(models.TextChoices):
     STOPPED = "stopped", "Зупинено"
 
 
+class AutoPostStatus(models.TextChoices):
+    IDLE = "idle", "Не активний"
+    RUNNING = "running", "Постинг"
+    PAUSED = "paused", "На паузі"
+    COMPLETED = "completed", "Завершено"
+    ERROR = "error", "Помилка"
+
+
+class PostQueueStatus(models.TextChoices):
+    PENDING = "pending", "Очікує"
+    POSTED = "posted", "Опубліковано"
+    FAILED = "failed", "Помилка"
+    SKIPPED = "skipped", "Пропущено"
+
+
 from django.conf import settings
 
 def get_default_uniqueness_config():
@@ -155,3 +170,196 @@ class ParseTask(models.Model):
     def mark_wait_uniqueness(self):
         self.status = TaskStatus.WAITING_UNIQUENESS
         self.save(update_fields=['status'])
+
+
+class AutoPostConfig(models.Model):
+    task = models.OneToOneField(
+        ParseTask,
+        on_delete=models.CASCADE,
+        related_name="autopost_config",
+        verbose_name="Завдання",
+    )
+
+    webhook_token = models.UUIDField(
+        verbose_name="Webhook токен",
+        help_text="UUID токен з сервісу автопостингу",
+    )
+
+    board_name = models.CharField(
+        max_length=255,
+        verbose_name="Назва дошки Pinterest",
+    )
+
+    min_interval = models.PositiveIntegerField(
+        default=100,
+        verbose_name="Мінімальний інтервал (хвилини)",
+        help_text="Мінімальний час між постами в хвилинах",
+    )
+
+    max_interval = models.PositiveIntegerField(
+        default=200,
+        verbose_name="Максимальний інтервал (хвилини)",
+        help_text="Максимальний час між постами в хвилинах",
+    )
+
+    site_url = models.URLField(
+        max_length=500,
+        verbose_name="Базовий URL сайту",
+        help_text="Наприклад: https://example.com/?",
+        default="https://example.com/?",
+    )
+
+    use_uniqueness = models.BooleanField(
+        default=True,
+        verbose_name="Унікалізувати перед постингом",
+    )
+
+    groq_api_key = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="Groq API ключ",
+        help_text="Ключ для унікалізації через Groq",
+    )
+
+    groq_prompt = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Промпт для унікалізації",
+        help_text="Кастомний промпт для Groq API",
+        default=(
+            "Uniquify the following Pinterest pin content. Return ONLY a JSON object with 'title' and 'description' keys.\n\n"
+            "Original Title: {{title}}\n"
+            "Original Description: {{description}}\n"
+            "Alt Text: {{alt_text}}\n"
+            "Annotation: {{annotation}}\n\n"
+            "CRITICAL RULES:\n"
+            "1. Rewrite title and description to make them 100% unique, engaging, and clicking.\n"
+            "2. Keep the EXACT SAME LANGUAGE as the input text (e.g. if input is Ukrainian, output Ukrainian).\n"
+            "3. Return ONLY valid JSON, do not include markdown blocks like ```json, no explanations."
+        ),
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=AutoPostStatus.choices,
+        default=AutoPostStatus.IDLE,
+        verbose_name="Статус автопостингу",
+    )
+
+    celery_task_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="ID Celery задачі автопостингу",
+    )
+
+    posted_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Опубліковано пінів",
+    )
+
+    total_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Всього пінів",
+    )
+
+    error_message = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Повідомлення про помилку",
+    )
+
+    started_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="Дата початку постингу",
+    )
+
+    finished_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="Дата завершення постингу",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата створення",
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Дата оновлення",
+    )
+
+    class Meta:
+        verbose_name = "Налаштування автопостингу"
+        verbose_name_plural = "Налаштування автопостингу"
+
+    def __str__(self):
+        return f"Автопостинг для завдання #{self.task.id}"
+
+
+class AutoPostQueue(models.Model):
+    """Черга для автопостингу пінів"""
+
+    config = models.ForeignKey(
+        AutoPostConfig,
+        on_delete=models.CASCADE,
+        related_name="queue_items",
+        verbose_name="Конфігурація автопостингу",
+    )
+
+    pin = models.ForeignKey(
+        "results.PinResult",
+        on_delete=models.CASCADE,
+        related_name="post_queue_items",
+        verbose_name="Пін",
+    )
+
+    scheduled_at = models.DateTimeField(
+        verbose_name="Заплановано на",
+        db_index=True,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=PostQueueStatus.choices,
+        default=PostQueueStatus.PENDING,
+        verbose_name="Статус",
+        db_index=True,
+    )
+
+    posted_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="Опубліковано",
+    )
+
+    error_message = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Повідомлення про помилку",
+    )
+
+    attempts = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="Кількість спроб",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата створення",
+    )
+
+    class Meta:
+        verbose_name = "Елемент черги автопостингу"
+        verbose_name_plural = "Черга автопостингу"
+        ordering = ["scheduled_at"]
+        indexes = [
+            models.Index(fields=["status", "scheduled_at"]),
+            models.Index(fields=["config", "status"]),
+        ]
+
+    def __str__(self):
+        return f"Пост #{self.pin.id} заплановано на {self.scheduled_at}"

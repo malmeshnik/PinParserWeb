@@ -12,6 +12,7 @@ from apps.tasks.models import ParseTask, TaskStatus
 from apps.accounts.models import PinterestAccount, AccountStatus
 from apps.results.models import PinResult
 from apps.logs.models import ErrorLog
+from apps.results.services.image_download_service import ImageDownloadService
 from workers.pinterest_worker import PinterestWorker
 from workers.pin_fetcher import PinFetcher
 from .pin_parser import PinParser
@@ -22,6 +23,7 @@ class PinterestParsePipeline:
         self.task = task
         self.headless = headless
         self.parser = PinParser()
+        self.image_downloader = ImageDownloadService()
         self.urls_by_keyword = defaultdict(set)
 
     def run(self) -> int:
@@ -213,11 +215,23 @@ class PinterestParsePipeline:
         self.task.save(update_fields=["processed_urls"])
 
     def _save_result(self, data: dict):
-        PinResult.objects.get_or_create(
+        image_url = data.get("image_url")
+        pin_id = data.get("pin_id")
+
+        pin_result, created = PinResult.objects.get_or_create(
             task=self.task,
             pin_url=data["pin_url"],
             defaults=data,
         )
+
+        if created and image_url and pin_id:
+            try:
+                image_file = self.image_downloader.download_image(image_url, pin_id)
+                if image_file:
+                    pin_result.local_image.save(image_file.name, image_file, save=True)
+                    logger.success(f"[PIPELINE] Saved local image for pin {pin_id}")
+            except Exception as e:
+                logger.warning(f"[PIPELINE] Failed to download image for pin {pin_id}: {e}")
 
     def _fail_task(self, message: str):
         logger.error(f"[PIPELINE] {message}")

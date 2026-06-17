@@ -1,0 +1,200 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Головна</a>
+    &rsaquo; <a href="{% url 'admin:tasks_parsetask_changelist' %}">Завдання парсингу</a>
+    &rsaquo; <a href="{% url 'admin:tasks_parsetask_change' task.id %}">{{ task.name }}</a>
+    &rsaquo; Налаштування автопостингу
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <h1>{{ title }}</h1>
+
+    {% if messages %}
+    <ul class="messagelist">
+        {% for message in messages %}
+        <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <div class="module">
+        <h2>Статус автопостингу</h2>
+        <table>
+            <tr>
+                <th>Статус:</th>
+                <td>
+                    <strong style="color: {% if config.status == 'running' %}green{% elif config.status == 'completed' %}blue{% elif config.status == 'error' %}red{% else %}gray{% endif %}">
+                        {{ config.get_status_display|upper }}
+                    </strong>
+                </td>
+            </tr>
+            <tr>
+                <th>Прогрес:</th>
+                <td>{{ config.posted_count }} / {{ config.total_count }} пінів</td>
+            </tr>
+            {% if config.started_at %}
+            <tr>
+                <th>Дата початку:</th>
+                <td>{{ config.started_at|date:"d.m.Y H:i" }}</td>
+            </tr>
+            {% endif %}
+            {% if config.finished_at %}
+            <tr>
+                <th>Дата завершення:</th>
+                <td>{{ config.finished_at|date:"d.m.Y H:i" }}</td>
+            </tr>
+            {% endif %}
+            {% if config.error_message %}
+            <tr>
+                <th>Помилка:</th>
+                <td style="color: red;">{{ config.error_message }}</td>
+            </tr>
+            {% endif %}
+        </table>
+
+        <div style="margin-top: 20px;">
+            {% if config.status != 'running' %}
+            <form method="post" style="display: inline;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="start">
+                <button type="submit" class="button" style="background-color: #417690; color: white; padding: 10px 20px; border: none; cursor: pointer;">
+                    ▶️ Запустити автопостинг
+                </button>
+            </form>
+            {% else %}
+            <form method="post" style="display: inline;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="stop">
+                <button type="submit" class="button" style="background-color: #ba2121; color: white; padding: 10px 20px; border: none; cursor: pointer;">
+                    ⏹️ Зупинити автопостинг
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <form method="post" style="margin-top: 30px;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save">
+
+        <div class="module">
+            <h2>Налаштування</h2>
+
+            <fieldset class="module aligned">
+                <div class="form-row">
+                    <div>
+                        <label for="{{ form.webhook_token.id_for_label }}">{{ form.webhook_token.label }}:</label>
+                        {{ form.webhook_token }}
+                        {% if form.webhook_token.help_text %}
+                        <p class="help">{{ form.webhook_token.help_text }}</p>
+                        {% endif %}
+                        {% if form.webhook_token.errors %}
+                        <p class="errornote">{{ form.webhook_token.errors }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <label for="{{ form.board_name.id_for_label }}">{{ form.board_name.label }}:</label>
+                        {{ form.board_name }}
+                        {% if form.board_name.help_text %}
+                        <p class="help">{{ form.board_name.help_text }}</p>
+                        {% endif %}
+                        {% if form.board_name.errors %}
+                        <p class="errornote">{{ form.board_name.errors }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <label for="{{ form.min_interval.id_for_label }}">{{ form.min_interval.label }}:</label>
+                        {{ form.min_interval }}
+                        {% if form.min_interval.help_text %}
+                        <p class="help">{{ form.min_interval.help_text }}</p>
+                        {% endif %}
+                        {% if form.min_interval.errors %}
+                        <p class="errornote">{{ form.min_interval.errors }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <label for="{{ form.max_interval.id_for_label }}">{{ form.max_interval.label }}:</label>
+                        {{ form.max_interval }}
+                        {% if form.max_interval.help_text %}
+                        <p class="help">{{ form.max_interval.help_text }}</p>
+                        {% endif %}
+                        {% if form.max_interval.errors %}
+                        <p class="errornote">{{ form.max_interval.errors }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <label for="{{ form.site_url.id_for_label }}">{{ form.site_url.label }}:</label>
+                        {{ form.site_url }}
+                        {% if form.site_url.help_text %}
+                        <p class="help">{{ form.site_url.help_text }}</p>
+                        {% endif %}
+                        {% if form.site_url.errors %}
+                        <p class="errornote">{{ form.site_url.errors }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <label for="{{ form.use_uniqueness.id_for_label }}">{{ form.use_uniqueness.label }}:</label>
+                        {{ form.use_uniqueness }}
+                        {% if form.use_uniqueness.help_text %}
+                        <p class="help">{{ form.use_uniqueness.help_text }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <label for="{{ form.groq_api_key.id_for_label }}">{{ form.groq_api_key.label }}:</label>
+                        {{ form.groq_api_key }}
+                        {% if form.groq_api_key.help_text %}
+                        <p class="help">{{ form.groq_api_key.help_text }}</p>
+                        {% endif %}
+                        {% if form.groq_api_key.errors %}
+                        <p class="errornote">{{ form.groq_api_key.errors }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <label for="{{ form.groq_prompt.id_for_label }}">{{ form.groq_prompt.label }}:</label>
+                        {{ form.groq_prompt }}
+                        {% if form.groq_prompt.help_text %}
+                        <p class="help">{{ form.groq_prompt.help_text }}</p>
+                        {% endif %}
+                        {% if form.groq_prompt.errors %}
+                        <p class="errornote">{{ form.groq_prompt.errors }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="submit-row">
+                <input type="submit" value="💾 Зберегти налаштування" class="default" />
+                <a href="{% url 'admin:tasks_parsetask_change' task.id %}" class="button cancel-link">Скасувати</a>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

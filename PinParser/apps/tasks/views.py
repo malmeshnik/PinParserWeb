@@ -1,10 +1,16 @@
+from django import forms
+from django.contrib import messages
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.admin.views.decorators import staff_member_required
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse
-from .models import ParseTask, TaskStatus
+from .models import ParseTask, TaskStatus, AutoPostConfig, AutoPostStatus
 from .serializers import ParseTaskSerializer, CreateTaskSerializer
 from .tasks import run_parse_task
+from .tasks.autopost_task import initialize_autopost_queue
+from config.celery import app
 
 @extend_schema(tags=['Tasks'])
 class TaskViewSet(viewsets.ModelViewSet):
@@ -53,3 +59,83 @@ class TaskViewSet(viewsets.ModelViewSet):
         task.save(update_fields=['status'])
         run_parse_task.delay(task.id)
         return Response({'status': 'task restarted'})
+
+
+class AutoPostConfigForm(forms.ModelForm):
+    class Meta:
+        model = AutoPostConfig
+        fields = [
+            'webhook_token',
+            'board_name',
+            'min_interval',
+            'max_interval',
+            'site_url',
+            'use_uniqueness',
+            'groq_api_key',
+            'groq_prompt',
+        ]
+        widgets = {
+            'webhook_token': forms.TextInput(attrs={'class': 'vTextField', 'size': '40'}),
+            'board_name': forms.TextInput(attrs={'class': 'vTextField'}),
+            'min_interval': forms.NumberInput(attrs={'class': 'vIntegerField'}),
+            'max_interval': forms.NumberInput(attrs={'class': 'vIntegerField'}),
+            'site_url': forms.URLInput(attrs={'class': 'vURLField', 'size': '60'}),
+            'groq_api_key': forms.TextInput(attrs={'class': 'vTextField', 'size': '60'}),
+            'groq_prompt': forms.Textarea(attrs={'class': 'vLargeTextField', 'rows': 10, 'cols': 80}),
+        }
+
+
+@staff_member_required
+def autopost_settings_view(request, task_id):
+    """View для налаштування автопостингу"""
+    task = get_object_or_404(ParseTask, id=task_id)
+
+    # Перевірка прав доступу
+    if not request.user.is_superuser and task.owner != request.user:
+        messages.error(request, "У вас немає доступу до цього завдання")
+        return redirect('admin:tasks_parsetask_changelist')
+
+    config, created = AutoPostConfig.objects.get_or_create(task=task)
+
+    if request.method == 'POST':
+        action_type = request.POST.get('action')
+
+        if action_type == 'save':
+            form = AutoPostConfigForm(request.POST, instance=config)
+            if form.is_valid():
+                form.save()
+                messages.success(request, "Налаштування збережено")
+                return redirect('autopost_settings', task_id=task_id)
+
+        elif action_type == 'start':
+            if config.status == AutoPostStatus.RUNNING:
+                messages.warning(request, "Автопостинг вже запущено")
+            else:
+                # Запускаємо ініціалізацію черги
+                initialize_autopost_queue.delay(config.id)
+                messages.success(request, "Автопостинг запущено. Черга створюється...")
+            return redirect('autopost_settings', task_id=task_id)
+
+        elif action_type == 'stop':
+            if config.status == AutoPostStatus.RUNNING:
+                config.status = AutoPostStatus.PAUSED
+                config.save(update_fields=['status'])
+                messages.success(request, "Автопостинг зупинено")
+            else:
+                messages.warning(request, "Автопостинг не запущено")
+            return redirect('autopost_settings', task_id=task_id)
+
+    else:
+        form = AutoPostConfigForm(instance=config)
+
+    context = {
+        'task': task,
+        'config': config,
+        'form': form,
+        'title': f'Налаштування автопостингу для завдання: {task.name}',
+        'opts': ParseTask._meta,
+        'has_view_permission': True,
+        'site_header': 'PinParser Administration',
+    }
+
+    return render(request, 'admin/tasks/autopost_settings.html', context)

@@ -48,7 +48,7 @@ class ParseTaskForm(forms.ModelForm):
 class ParseTaskAdmin(admin.ModelAdmin):
     form = ParseTaskForm
     change_form_template = "admin/tasks/parsetask/change_form.html"
-    list_display = ('name', 'owner', 'status_badge', 'progress_display', 'error_message', 'view_results_link', 'download_excel', 'created_at')
+    list_display = ('name', 'owner', 'status_badge', 'progress_display', 'error_message', 'view_results_link', 'download_excel', 'autopost_settings_link', 'created_at')
     list_filter = ('status', 'created_at', 'use_uniqueness')
     search_fields = ('name', 'keywords')
     exclude = ('keywords', 'celery_task_id')
@@ -125,6 +125,12 @@ class ParseTaskAdmin(admin.ModelAdmin):
         url = reverse('admin:results_pinresult_changelist') + f'?task__id__exact={obj.id}'
         return format_html('<a class="button" href="{}">📊 Результати</a>', url)
     view_results_link.short_description = "Результати"
+
+    def autopost_settings_link(self, obj):
+        # TODO: Додати URL для налаштування автопостингу
+        url = f"/admin/tasks/parsetask/{obj.id}/autopost/"
+        return format_html('<a class="button" href="{}">⚙️ Автопостинг</a>', url)
+    autopost_settings_link.short_description = "Автопостинг"
 
     def progress_display(self, obj):
         parsed = obj.results.count()

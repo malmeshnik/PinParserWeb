@@ -27,6 +27,7 @@ from apps.proxies.views import ProxyViewSet
 from apps.results.views import PinResultViewSet
 from apps.uniqueness.views import UniquenessConfigViewSet
 from apps.analytics.views import analytics_dashboard
+from apps.tasks.views import autopost_settings_view
 
 router = DefaultRouter()
 router.register(r'tasks', TaskViewSet)
@@ -37,6 +38,7 @@ router.register(r'uniqueness', UniquenessConfigViewSet)
 
 urlpatterns = [
     path('admin/analytics/', analytics_dashboard, name='analytics_dashboard'),
+    path('admin/tasks/parsetask/<int:task_id>/autopost/', autopost_settings_view, name='autopost_settings'),
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
