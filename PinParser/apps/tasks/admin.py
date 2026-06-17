@@ -352,12 +352,13 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
             return "0%"
         percentage = (obj.posted_count / obj.total_count) * 100
         color = "#198754" if percentage == 100 else "#0d6efd"
+        percentage_str = f"{percentage:.1f}"
         return format_html(
-            '<b style="color:{}">{}/{} ({:.1f}%)</b>',
+            '<b style="color:{}">{}/{} ({}%)</b>',
             color,
             obj.posted_count,
             obj.total_count,
-            percentage
+            percentage_str
         )
     progress_display.short_description = "Прогрес"
 
