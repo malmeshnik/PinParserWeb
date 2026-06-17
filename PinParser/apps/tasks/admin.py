@@ -48,10 +48,14 @@ class ParseTaskForm(forms.ModelForm):
 class ParseTaskAdmin(admin.ModelAdmin):
     form = ParseTaskForm
     change_form_template = "admin/tasks/parsetask/change_form.html"
-    list_display = ('name', 'owner', 'status_badge', 'progress_display', 'error_message', 'view_results_link', 'download_excel', 'autopost_settings_link', 'created_at')
+    list_display = ('name', 'owner', 'status_badge', 'progress_display', 'short_error_message', 'view_results_link', 'download_excel', 'autopost_settings_link', 'created_at')
     list_filter = ('status', 'created_at', 'use_uniqueness')
     search_fields = ('name', 'keywords')
     exclude = ('keywords', 'celery_task_id')
+    list_select_related = ('owner', 'uniqueness_config')
+    list_per_page = 50  # Пагінація по 50 замість 100 за замовчуванням
+    show_full_result_count = False  # Не рахувати total count (швидше)
+    ordering = ('-created_at',)  # Нові завдання зверху
 
     readonly_fields = (
         "error_message",
@@ -96,14 +100,35 @@ class ParseTaskAdmin(admin.ModelAdmin):
         )
     status_badge.short_description = "Статус"
 
+    def short_error_message(self, obj):
+        if not obj.error_message:
+            return "-"
+        # Показуємо тільки перші 50 символів
+        if len(obj.error_message) > 50:
+            return obj.error_message[:50] + "..."
+        return obj.error_message
+    short_error_message.short_description = "Помилка"
+
 
     actions = ['start_tasks', 'stop_task', 'export_to_excel', 'uniqueness_task', 'generate_slug_task', 'download_files']
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        if request.user.is_superuser:
-            return qs
-        return qs.filter(owner=request.user)
+
+        # Prefetch related для оптимізації
+        qs = qs.select_related('owner', 'uniqueness_config')
+
+        # Анотуємо кількість результатів замість count() в кожному рядку
+        from django.db.models import Count
+        qs = qs.annotate(results_count=Count('results'))
+
+        # Defer великих полів які не показуються в списку
+        qs = qs.defer('keywords', 'error_message')
+
+        if not request.user.is_superuser:
+            qs = qs.filter(owner=request.user)
+
+        return qs
 
     def save_model(self, request, obj, form, change):
         if not obj.pk and not obj.owner:
@@ -133,7 +158,8 @@ class ParseTaskAdmin(admin.ModelAdmin):
     autopost_settings_link.short_description = "Автопостинг"
 
     def progress_display(self, obj):
-        parsed = obj.results.count()
+        # Використовуємо анотований results_count замість obj.results.count()
+        parsed = getattr(obj, 'results_count', 0)
         return f"{parsed}/{obj.total_urls}"
     progress_display.short_description = "Вдало оброблено/Знайдено пінів"
 

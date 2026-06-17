@@ -127,6 +127,11 @@ class ParseTask(models.Model):
         verbose_name = "Завдання парсингу"
         verbose_name_plural = "Завдання парсингу"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["-created_at"]),
+            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["owner", "-created_at"]),
+        ]
 
     def __str__(self):
         return f"Завдання №{self.id} - {self.name}"
