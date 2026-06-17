@@ -210,14 +210,9 @@ def _process_single_post(item: AutoPostQueue):
             slug_text = GroqUniquenessService.generate_slug(final_title)
             final_slug_url = f"{config.site_url}{slug_text}"
 
-    # Формуємо URL фото
-    image_url = ""
-    if pin.local_image:
-        from django.conf import settings
-        base_url = settings.MEDIA_URL.rstrip('/')
-        image_url = f"http://207.180.197.231:8000{base_url}/{pin.local_image.name}"
-    elif pin.image_url:
-        image_url = pin.image_url
+    # Формуємо URL фото - використовуємо оригінальне Pinterest посилання
+    # бо Pinterest не приймає посилання без HTTPS та домену
+    image_url = pin.image_url or ""
 
     # Відправляємо на webhook
     payload = {
