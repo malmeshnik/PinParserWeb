@@ -3,6 +3,322 @@
 
 {% block title %}{{ title }}{% endblock %}
 
+{% block extrastyle %}
+<style>
+    :root {
+        --primary-color: #2563eb;
+        --success-color: #10b981;
+        --warning-color: #f59e0b;
+        --danger-color: #ef4444;
+        --gray-50: #f9fafb;
+        --gray-100: #f3f4f6;
+        --gray-200: #e5e7eb;
+        --gray-300: #d1d5db;
+        --gray-700: #374151;
+        --gray-800: #1f2937;
+        --gray-900: #111827;
+    }
+
+    #content-main {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .page-header {
+        margin-bottom: 30px;
+    }
+
+    .page-header h1 {
+        font-size: 28px;
+        font-weight: 600;
+        color: var(--gray-900);
+        margin: 0 0 10px 0;
+    }
+
+    .status-card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        padding: 24px;
+        margin-bottom: 24px;
+    }
+
+    .status-card h2 {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--gray-900);
+        margin: 0 0 20px 0;
+        padding-bottom: 12px;
+        border-bottom: 2px solid var(--gray-100);
+    }
+
+    .status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .status-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .status-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--gray-700);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .status-value {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--gray-900);
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .status-badge.running {
+        background: #10b98120;
+        color: #10b981;
+    }
+
+    .status-badge.idle {
+        background: var(--gray-100);
+        color: var(--gray-700);
+    }
+
+    .status-badge.paused {
+        background: #f59e0b20;
+        color: #f59e0b;
+    }
+
+    .status-badge.completed {
+        background: #2563eb20;
+        color: #2563eb;
+    }
+
+    .status-badge.error {
+        background: #ef444420;
+        color: #ef4444;
+    }
+
+    .progress-bar-wrapper {
+        margin-top: 12px;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 8px;
+        background: var(--gray-200);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .progress-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--success-color), #059669);
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+
+    .progress-text {
+        font-size: 13px;
+        color: var(--gray-700);
+        margin-top: 6px;
+    }
+
+    .button-group {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-decoration: none;
+    }
+
+    .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn-primary {
+        background: var(--primary-color);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #1d4ed8;
+    }
+
+    .btn-success {
+        background: var(--success-color);
+        color: white;
+    }
+
+    .btn-success:hover {
+        background: #059669;
+    }
+
+    .btn-danger {
+        background: var(--danger-color);
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background: #dc2626;
+    }
+
+    .form-section {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        padding: 24px;
+        margin-bottom: 24px;
+    }
+
+    .form-section h2 {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--gray-900);
+        margin: 0 0 20px 0;
+        padding-bottom: 12px;
+        border-bottom: 2px solid var(--gray-100);
+    }
+
+    .form-grid {
+        display: grid;
+        gap: 20px;
+    }
+
+    .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .form-field label {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--gray-700);
+    }
+
+    .form-field input[type="text"],
+    .form-field input[type="number"],
+    .form-field input[type="url"],
+    .form-field textarea {
+        padding: 10px 14px;
+        border: 1px solid var(--gray-300);
+        border-radius: 8px;
+        font-size: 14px;
+        transition: all 0.2s;
+        font-family: inherit;
+    }
+
+    .form-field input:focus,
+    .form-field textarea:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    .form-field textarea {
+        min-height: 120px;
+        resize: vertical;
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+    }
+
+    .form-field .help {
+        font-size: 13px;
+        color: var(--gray-700);
+        margin: 0;
+    }
+
+    .form-field .errornote {
+        color: var(--danger-color);
+        font-size: 13px;
+        margin: 0;
+    }
+
+    .form-field input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+
+    .checkbox-field {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .checkbox-field label {
+        margin: 0;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--gray-200);
+    }
+
+    .alert {
+        padding: 14px 18px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        font-size: 14px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .alert-success {
+        background: #10b98120;
+        color: #065f46;
+        border: 1px solid #10b98140;
+    }
+
+    .alert-error {
+        background: #ef444420;
+        color: #991b1b;
+        border: 1px solid #ef444440;
+    }
+
+    .alert-warning {
+        background: #f59e0b20;
+        color: #92400e;
+        border: 1px solid #f59e0b40;
+    }
+</style>
+{% endblock %}
+
 {% block breadcrumbs %}
 <div class="breadcrumbs">
     <a href="{% url 'admin:index' %}">Головна</a>
@@ -14,193 +330,186 @@
 
 {% block content %}
 <div id="content-main">
-    <h1>{{ title }}</h1>
+    <div class="page-header">
+        <h1>{{ title }}</h1>
+    </div>
 
     {% if messages %}
-    <ul class="messagelist">
-        {% for message in messages %}
-        <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
-        {% endfor %}
-    </ul>
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags }}">
+        {% if message.tags == 'success' %}✓{% elif message.tags == 'error' %}✗{% else %}⚠{% endif %}
+        {{ message }}
+    </div>
+    {% endfor %}
     {% endif %}
 
-    <div class="module">
+    <div class="status-card">
         <h2>Статус автопостингу</h2>
-        <table>
-            <tr>
-                <th>Статус:</th>
-                <td>
-                    <strong style="color: {% if config.status == 'running' %}green{% elif config.status == 'completed' %}blue{% elif config.status == 'error' %}red{% else %}gray{% endif %}">
-                        {{ config.get_status_display|upper }}
-                    </strong>
-                </td>
-            </tr>
-            <tr>
-                <th>Прогрес:</th>
-                <td>{{ config.posted_count }} / {{ config.total_count }} пінів</td>
-            </tr>
+
+        <div class="status-grid">
+            <div class="status-item">
+                <span class="status-label">Статус</span>
+                <span class="status-badge {{ config.status }}">{{ config.get_status_display }}</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Прогрес</span>
+                <span class="status-value">{{ config.posted_count }} / {{ config.total_count }} пінів</span>
+            </div>
             {% if config.started_at %}
-            <tr>
-                <th>Дата початку:</th>
-                <td>{{ config.started_at|date:"d.m.Y H:i" }}</td>
-            </tr>
+            <div class="status-item">
+                <span class="status-label">Дата початку</span>
+                <span class="status-value">{{ config.started_at|date:"d.m.Y H:i" }}</span>
+            </div>
             {% endif %}
             {% if config.finished_at %}
-            <tr>
-                <th>Дата завершення:</th>
-                <td>{{ config.finished_at|date:"d.m.Y H:i" }}</td>
-            </tr>
+            <div class="status-item">
+                <span class="status-label">Дата завершення</span>
+                <span class="status-value">{{ config.finished_at|date:"d.m.Y H:i" }}</span>
+            </div>
             {% endif %}
-            {% if config.error_message %}
-            <tr>
-                <th>Помилка:</th>
-                <td style="color: red;">{{ config.error_message }}</td>
-            </tr>
-            {% endif %}
-        </table>
+        </div>
 
-        <div style="margin-top: 20px;">
+        {% if config.total_count > 0 %}
+        <div class="progress-bar-wrapper">
+            <div class="progress-bar">
+                <div class="progress-bar-fill" style="width: {{ config.posted_count|add:0 }}{{ config.total_count|add:0 }}{% widthratio config.posted_count config.total_count 100 %}%"></div>
+            </div>
+            <div class="progress-text">{% widthratio config.posted_count config.total_count 100 %}% завершено</div>
+        </div>
+        {% endif %}
+
+        {% if config.error_message %}
+        <div class="alert alert-error" style="margin-top: 16px;">
+            ✗ {{ config.error_message }}
+        </div>
+        {% endif %}
+
+        <div class="button-group" style="margin-top: 20px;">
             {% if config.status != 'running' %}
             <form method="post" style="display: inline;">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="start">
-                <button type="submit" class="button" style="background-color: #417690; color: white; padding: 10px 20px; border: none; cursor: pointer;">
-                    ▶️ Запустити автопостинг
+                <button type="submit" class="btn btn-primary">
+                    ▶ Запустити автопостинг
                 </button>
             </form>
             {% else %}
             <form method="post" style="display: inline;">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="stop">
-                <button type="submit" class="button" style="background-color: #ba2121; color: white; padding: 10px 20px; border: none; cursor: pointer;">
-                    ⏹️ Зупинити автопостинг
+                <button type="submit" class="btn btn-danger">
+                    ⏹ Зупинити автопостинг
                 </button>
             </form>
             {% endif %}
 
-            <form method="post" style="display: inline; margin-left: 10px;">
+            <form method="post" style="display: inline;">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="test">
-                <button type="submit" class="button" style="background-color: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer;">
+                <button type="submit" class="btn btn-success">
                     🧪 Тест
                 </button>
             </form>
         </div>
     </div>
 
-    <form method="post" style="margin-top: 30px;">
+    <form method="post">
         {% csrf_token %}
         <input type="hidden" name="action" value="save">
 
-        <div class="module">
+        <div class="form-section">
             <h2>Налаштування</h2>
 
-            <fieldset class="module aligned">
-                <div class="form-row field-webhook_token">
-                    <div>
-                        <label for="{{ form.webhook_token.id_for_label }}">{{ form.webhook_token.label }}:</label>
-                        {{ form.webhook_token }}
-                        {% if form.webhook_token.help_text %}
-                        <p class="help">{{ form.webhook_token.help_text }}</p>
-                        {% endif %}
-                        {% if form.webhook_token.errors %}
-                        <p class="errornote">{{ form.webhook_token.errors }}</p>
-                        {% endif %}
-                    </div>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="{{ form.webhook_token.id_for_label }}">{{ form.webhook_token.label }}</label>
+                    {{ form.webhook_token }}
+                    {% if form.webhook_token.help_text %}
+                    <p class="help">{{ form.webhook_token.help_text }}</p>
+                    {% endif %}
+                    {% if form.webhook_token.errors %}
+                    <p class="errornote">{{ form.webhook_token.errors }}</p>
+                    {% endif %}
                 </div>
 
-                <div class="form-row field-board_name">
-                    <div>
-                        <label for="{{ form.board_name.id_for_label }}">{{ form.board_name.label }}:</label>
-                        {{ form.board_name }}
-                        {% if form.board_name.help_text %}
-                        <p class="help">{{ form.board_name.help_text }}</p>
-                        {% endif %}
-                        {% if form.board_name.errors %}
-                        <p class="errornote">{{ form.board_name.errors }}</p>
-                        {% endif %}
-                    </div>
+                <div class="form-field">
+                    <label for="{{ form.board_name.id_for_label }}">{{ form.board_name.label }}</label>
+                    {{ form.board_name }}
+                    {% if form.board_name.help_text %}
+                    <p class="help">{{ form.board_name.help_text }}</p>
+                    {% endif %}
+                    {% if form.board_name.errors %}
+                    <p class="errornote">{{ form.board_name.errors }}</p>
+                    {% endif %}
                 </div>
 
-                <div class="form-row field-min_interval">
-                    <div>
-                        <label for="{{ form.min_interval.id_for_label }}">{{ form.min_interval.label }}:</label>
-                        {{ form.min_interval }}
-                        {% if form.min_interval.help_text %}
-                        <p class="help">{{ form.min_interval.help_text }}</p>
-                        {% endif %}
-                        {% if form.min_interval.errors %}
-                        <p class="errornote">{{ form.min_interval.errors }}</p>
-                        {% endif %}
-                    </div>
+                <div class="form-field">
+                    <label for="{{ form.min_interval.id_for_label }}">{{ form.min_interval.label }}</label>
+                    {{ form.min_interval }}
+                    {% if form.min_interval.help_text %}
+                    <p class="help">{{ form.min_interval.help_text }}</p>
+                    {% endif %}
+                    {% if form.min_interval.errors %}
+                    <p class="errornote">{{ form.min_interval.errors }}</p>
+                    {% endif %}
                 </div>
 
-                <div class="form-row field-max_interval">
-                    <div>
-                        <label for="{{ form.max_interval.id_for_label }}">{{ form.max_interval.label }}:</label>
-                        {{ form.max_interval }}
-                        {% if form.max_interval.help_text %}
-                        <p class="help">{{ form.max_interval.help_text }}</p>
-                        {% endif %}
-                        {% if form.max_interval.errors %}
-                        <p class="errornote">{{ form.max_interval.errors }}</p>
-                        {% endif %}
-                    </div>
+                <div class="form-field">
+                    <label for="{{ form.max_interval.id_for_label }}">{{ form.max_interval.label }}</label>
+                    {{ form.max_interval }}
+                    {% if form.max_interval.help_text %}
+                    <p class="help">{{ form.max_interval.help_text }}</p>
+                    {% endif %}
+                    {% if form.max_interval.errors %}
+                    <p class="errornote">{{ form.max_interval.errors }}</p>
+                    {% endif %}
                 </div>
 
-                <div class="form-row field-site_url">
-                    <div>
-                        <label for="{{ form.site_url.id_for_label }}">{{ form.site_url.label }}:</label>
-                        {{ form.site_url }}
-                        {% if form.site_url.help_text %}
-                        <p class="help">{{ form.site_url.help_text }}</p>
-                        {% endif %}
-                        {% if form.site_url.errors %}
-                        <p class="errornote">{{ form.site_url.errors }}</p>
-                        {% endif %}
-                    </div>
+                <div class="form-field">
+                    <label for="{{ form.site_url.id_for_label }}">{{ form.site_url.label }}</label>
+                    {{ form.site_url }}
+                    {% if form.site_url.help_text %}
+                    <p class="help">{{ form.site_url.help_text }}</p>
+                    {% endif %}
+                    {% if form.site_url.errors %}
+                    <p class="errornote">{{ form.site_url.errors }}</p>
+                    {% endif %}
                 </div>
 
-                <div class="form-row field-use_uniqueness">
-                    <div>
-                        <label for="{{ form.use_uniqueness.id_for_label }}">{{ form.use_uniqueness.label }}:</label>
-                        {{ form.use_uniqueness }}
-                        {% if form.use_uniqueness.help_text %}
-                        <p class="help">{{ form.use_uniqueness.help_text }}</p>
-                        {% endif %}
-                    </div>
+                <div class="form-field checkbox-field">
+                    {{ form.use_uniqueness }}
+                    <label for="{{ form.use_uniqueness.id_for_label }}">{{ form.use_uniqueness.label }}</label>
+                    {% if form.use_uniqueness.help_text %}
+                    <p class="help">{{ form.use_uniqueness.help_text }}</p>
+                    {% endif %}
                 </div>
 
-                <div class="form-row field-groq_api_key">
-                    <div>
-                        <label for="{{ form.groq_api_key.id_for_label }}">{{ form.groq_api_key.label }}:</label>
-                        {{ form.groq_api_key }}
-                        {% if form.groq_api_key.help_text %}
-                        <p class="help">{{ form.groq_api_key.help_text }}</p>
-                        {% endif %}
-                        {% if form.groq_api_key.errors %}
-                        <p class="errornote">{{ form.groq_api_key.errors }}</p>
-                        {% endif %}
-                    </div>
+                <div class="form-field">
+                    <label for="{{ form.groq_api_key.id_for_label }}">{{ form.groq_api_key.label }}</label>
+                    {{ form.groq_api_key }}
+                    {% if form.groq_api_key.help_text %}
+                    <p class="help">{{ form.groq_api_key.help_text }}</p>
+                    {% endif %}
+                    {% if form.groq_api_key.errors %}
+                    <p class="errornote">{{ form.groq_api_key.errors }}</p>
+                    {% endif %}
                 </div>
 
-                <div class="form-row field-groq_prompt">
-                    <div>
-                        <label for="{{ form.groq_prompt.id_for_label }}">{{ form.groq_prompt.label }}:</label>
-                        {{ form.groq_prompt }}
-                        {% if form.groq_prompt.help_text %}
-                        <p class="help">{{ form.groq_prompt.help_text }}</p>
-                        {% endif %}
-                        {% if form.groq_prompt.errors %}
-                        <p class="errornote">{{ form.groq_prompt.errors }}</p>
-                        {% endif %}
-                    </div>
+                <div class="form-field">
+                    <label for="{{ form.groq_prompt.id_for_label }}">{{ form.groq_prompt.label }}</label>
+                    {{ form.groq_prompt }}
+                    {% if form.groq_prompt.help_text %}
+                    <p class="help">{{ form.groq_prompt.help_text }}</p>
+                    {% endif %}
+                    {% if form.groq_prompt.errors %}
+                    <p class="errornote">{{ form.groq_prompt.errors }}</p>
+                    {% endif %}
                 </div>
-            </fieldset>
+            </div>
 
-            <div class="submit-row">
-                <input type="submit" value="Зберегти налаштування" class="default" />
-                <a href="{% url 'admin:tasks_parsetask_change' task.id %}" class="button cancel-link">Скасувати</a>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">💾 Зберегти налаштування</button>
+                <a href="{% url 'admin:tasks_parsetask_change' task.id %}" class="btn" style="background: var(--gray-200); color: var(--gray-700);">Скасувати</a>
             </div>
         </div>
     </form>

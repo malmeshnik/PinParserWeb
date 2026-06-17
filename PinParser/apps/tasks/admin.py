@@ -9,7 +9,7 @@ from django.utils.html import format_html
 from django.http import HttpResponse
 from django import forms
 from celery.result import AsyncResult
-from .models import ParseTask, TaskStatus
+from .models import ParseTask, TaskStatus, AutoPostConfig, AutoPostStatus
 from .tasks import run_parse_task
 from .errors import TaskAlreadyRunning
 from apps.results.tasks import export_results_to_excel
@@ -274,3 +274,100 @@ class ParseTaskAdmin(admin.ModelAdmin):
         task.status = TaskStatus.RUNNING
         task.save(update_fields=["celery_task_id", "status"])
         self.message_user(request, f"Завдання {task.id} запущено 🚀")
+
+
+@admin.register(AutoPostConfig)
+class AutoPostConfigAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'task_link',
+        'status_badge',
+        'progress_display',
+        'board_name',
+        'webhook_token_short',
+        'started_at',
+        'finished_at',
+    )
+    list_filter = ('status', 'started_at', 'use_uniqueness')
+    search_fields = ('task__name', 'board_name', 'webhook_token')
+    readonly_fields = (
+        'task',
+        'posted_count',
+        'total_count',
+        'status',
+        'celery_task_id',
+        'error_message',
+        'started_at',
+        'finished_at',
+        'created_at',
+        'updated_at',
+    )
+    list_select_related = ('task', 'task__owner')
+    ordering = ('-created_at',)
+
+    fieldsets = (
+        ("Основна інформація", {
+            "fields": ("task", "status", "started_at", "finished_at")
+        }),
+        ("Прогрес", {
+            "fields": ("posted_count", "total_count")
+        }),
+        ("Налаштування Pinterest", {
+            "fields": ("webhook_token", "board_name")
+        }),
+        ("Налаштування інтервалів", {
+            "fields": ("min_interval", "max_interval", "site_url")
+        }),
+        ("Налаштування унікалізації", {
+            "fields": ("use_uniqueness", "groq_api_key", "groq_prompt")
+        }),
+        ("Технічна інформація", {
+            "fields": ("celery_task_id", "error_message", "created_at", "updated_at"),
+            "classes": ("collapse",)
+        }),
+    )
+
+    def status_badge(self, obj):
+        colors = {
+            AutoPostStatus.IDLE: "#999",
+            AutoPostStatus.RUNNING: "#0d6efd",
+            AutoPostStatus.PAUSED: "#ffc107",
+            AutoPostStatus.COMPLETED: "#198754",
+            AutoPostStatus.ERROR: "#dc3545",
+        }
+        return format_html(
+            '<b style="color:{}">{}</b>',
+            colors.get(obj.status, "#000"),
+            obj.get_status_display().upper(),
+        )
+    status_badge.short_description = "Статус"
+
+    def task_link(self, obj):
+        url = reverse('admin:tasks_parsetask_change', args=[obj.task.id])
+        return format_html('<a href="{}">{}</a>', url, obj.task.name)
+    task_link.short_description = "Завдання"
+
+    def progress_display(self, obj):
+        if obj.total_count == 0:
+            return "0%"
+        percentage = (obj.posted_count / obj.total_count) * 100
+        color = "#198754" if percentage == 100 else "#0d6efd"
+        return format_html(
+            '<b style="color:{}">{}/{} ({:.1f}%)</b>',
+            color,
+            obj.posted_count,
+            obj.total_count,
+            percentage
+        )
+    progress_display.short_description = "Прогрес"
+
+    def webhook_token_short(self, obj):
+        if not obj.webhook_token:
+            return "-"
+        token_str = str(obj.webhook_token)
+        return f"{token_str[:8]}...{token_str[-4:]}"
+    webhook_token_short.short_description = "Webhook токен"
+
+    def has_add_permission(self, request):
+        # Заборонити додавання через адмін панель (тільки через ParseTask)
+        return False
