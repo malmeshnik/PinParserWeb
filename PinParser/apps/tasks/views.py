@@ -109,6 +109,8 @@ def autopost_settings_view(request, task_id):
         elif action_type == 'start':
             if config.status == AutoPostStatus.RUNNING:
                 messages.warning(request, "Автопостинг вже запущено")
+            elif not config.webhook_token or not config.board_name:
+                messages.error(request, "Заповніть webhook токен та назву дошки перед запуском")
             else:
                 # Запускаємо ініціалізацію черги
                 initialize_autopost_queue.delay(config.id)

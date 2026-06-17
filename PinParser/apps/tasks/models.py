@@ -183,6 +183,8 @@ class AutoPostConfig(models.Model):
     webhook_token = models.UUIDField(
         verbose_name="Webhook токен",
         help_text="UUID токен з сервісу автопостингу",
+        blank=True,
+        null=True,
     )
 
     board_name = models.CharField(
