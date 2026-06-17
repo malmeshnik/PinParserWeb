@@ -278,6 +278,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
 
 @admin.register(AutoPostConfig)
 class AutoPostConfigAdmin(admin.ModelAdmin):
+    change_form_template = "admin/tasks/autopostconfig/change_form.html"
     list_display = (
         'id',
         'task_link',
@@ -294,9 +295,7 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
         'task',
         'posted_count',
         'total_count',
-        'status',
         'celery_task_id',
-        'error_message',
         'started_at',
         'finished_at',
         'created_at',
@@ -372,3 +371,82 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         # Заборонити додавання через адмін панель (тільки через ParseTask)
         return False
+
+    def response_change(self, request, obj):
+        """Обробка кастомних кнопок в change form"""
+        from django.shortcuts import redirect
+        from django.contrib import messages
+        from .tasks import initialize_autopost_queue
+        from .services.autopost_test_service import test_autopost_config
+
+        if "_start_autopost" in request.POST:
+            if obj.status == AutoPostStatus.RUNNING:
+                messages.warning(request, "Автопостинг вже запущено")
+            elif not obj.webhook_token or not obj.board_name:
+                messages.error(request, "Заповніть webhook токен та назву дошки перед запуском")
+            else:
+                initialize_autopost_queue.delay(obj.id)
+                messages.success(request, "Автопостинг запущено. Черга створюється...")
+            return redirect('admin:tasks_autopostconfig_change', obj.id)
+
+        if "_stop_autopost" in request.POST:
+            if obj.status == AutoPostStatus.RUNNING:
+                obj.status = AutoPostStatus.PAUSED
+                obj.save(update_fields=['status'])
+                messages.success(request, "Автопостинг зупинено")
+            else:
+                messages.warning(request, "Автопостинг не запущено")
+            return redirect('admin:tasks_autopostconfig_change', obj.id)
+
+        if "_test_autopost" in request.POST:
+            if not obj.webhook_token or not obj.board_name:
+                messages.error(request, "Заповніть webhook токен та назву дошки перед тестом")
+            else:
+                result = test_autopost_config(obj)
+                if result['success']:
+                    messages.success(
+                        request,
+                        f"Пін #{result['pin_id']} успішно опубліковано! Статус: {result['response_status']}"
+                    )
+                else:
+                    messages.error(request, f"Помилка публікації піна: {result['error']}")
+            return redirect('admin:tasks_autopostconfig_change', obj.id)
+
+        return super().response_change(request, obj)
+
+    def save_model(self, request, obj, form, change):
+        """При збереженні - перерахувати інтервали якщо вони змінились"""
+        if change:
+            old_obj = AutoPostConfig.objects.get(pk=obj.pk)
+            super().save_model(request, obj, form, change)
+
+            # Якщо змінились інтервали, перерахувати pending піни
+            if old_obj.min_interval != obj.min_interval or old_obj.max_interval != obj.max_interval:
+                from apps.tasks.models import AutoPostQueue, PostQueueStatus
+                from django.utils import timezone
+                import random
+                from datetime import timedelta
+
+                pending_items = AutoPostQueue.objects.filter(
+                    config=obj,
+                    status=PostQueueStatus.PENDING
+                ).order_by('scheduled_at')
+
+                if pending_items.exists():
+                    current_time = timezone.now()
+                    prev_time = current_time
+
+                    for idx, item in enumerate(pending_items):
+                        if idx == 0:
+                            item.scheduled_at = max(item.scheduled_at, current_time)
+                            prev_time = item.scheduled_at
+                        else:
+                            delay_minutes = random.randint(obj.min_interval, obj.max_interval)
+                            item.scheduled_at = prev_time + timedelta(minutes=delay_minutes)
+                            prev_time = item.scheduled_at
+
+                        item.save(update_fields=['scheduled_at'])
+
+                    messages.info(request, f"Перераховано розклад для {pending_items.count()} пінів з новими інтервалами")
+        else:
+            super().save_model(request, obj, form, change)

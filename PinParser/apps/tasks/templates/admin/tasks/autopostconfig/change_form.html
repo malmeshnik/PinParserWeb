@@ -1,0 +1,225 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .autopost-status-panel {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .autopost-status-panel h3 {
+        margin-top: 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #f0f0f0;
+    }
+
+    .status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin: 15px 0;
+    }
+
+    .status-item {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .status-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .status-value {
+        font-size: 16px;
+        font-weight: 600;
+        color: #333;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 5px 12px;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .status-badge.running {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-badge.idle {
+        background: #e2e3e5;
+        color: #383d41;
+    }
+
+    .status-badge.paused {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .status-badge.completed {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+
+    .status-badge.error {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .progress-bar-wrapper {
+        margin-top: 15px;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 6px;
+        background: #e9ecef;
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .progress-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #28a745, #20c997);
+        border-radius: 3px;
+        transition: width 0.3s ease;
+    }
+
+    .progress-text {
+        font-size: 12px;
+        color: #666;
+        margin-top: 5px;
+    }
+
+    .autopost-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .autopost-actions button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .autopost-actions button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+
+    .btn-start {
+        background: #007bff;
+        color: white;
+    }
+
+    .btn-stop {
+        background: #dc3545;
+        color: white;
+    }
+
+    .btn-test {
+        background: #28a745;
+        color: white;
+    }
+
+    .alert-info-custom {
+        background: #d1ecf1;
+        border: 1px solid #bee5eb;
+        color: #0c5460;
+        padding: 12px 15px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+        font-size: 13px;
+    }
+</style>
+{% endblock %}
+
+{% block after_field_sets %}
+<div class="autopost-status-panel">
+    <h3>Статус автопостингу</h3>
+
+    <div class="status-grid">
+        <div class="status-item">
+            <span class="status-label">Статус</span>
+            <span class="status-badge {{ original.status }}">{{ original.get_status_display }}</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Прогрес</span>
+            <span class="status-value">{{ original.posted_count }} / {{ original.total_count }} пінів</span>
+        </div>
+        {% if original.started_at %}
+        <div class="status-item">
+            <span class="status-label">Дата початку</span>
+            <span class="status-value">{{ original.started_at|date:"d.m.Y H:i" }}</span>
+        </div>
+        {% endif %}
+        {% if original.finished_at %}
+        <div class="status-item">
+            <span class="status-label">Дата завершення</span>
+            <span class="status-value">{{ original.finished_at|date:"d.m.Y H:i" }}</span>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if original.total_count > 0 %}
+    <div class="progress-bar-wrapper">
+        <div class="progress-bar">
+            {% widthratio original.posted_count original.total_count 100 as percentage %}
+            <div class="progress-bar-fill" style="width: {{ percentage }}%"></div>
+        </div>
+        <div class="progress-text">{{ percentage }}% завершено</div>
+    </div>
+    {% endif %}
+
+    {% if original.error_message %}
+    <div class="alert alert-danger" style="margin-top: 15px;">
+        <strong>Помилка:</strong> {{ original.error_message }}
+    </div>
+    {% endif %}
+
+    {% if original.status == 'running' %}
+    <div class="alert-info-custom">
+        ℹ️ Ви можете змінювати налаштування навіть під час активного постингу. Зміни застосуються до всіх пінів що ще не опубліковані.
+    </div>
+    {% endif %}
+
+    <div class="autopost-actions">
+        {% if original.status != 'running' %}
+        <button type="submit" name="_start_autopost" class="btn-start">
+            ▶ Запустити автопостинг
+        </button>
+        {% else %}
+        <button type="submit" name="_stop_autopost" class="btn-stop">
+            ⏹ Зупинити автопостинг
+        </button>
+        {% endif %}
+
+        <button type="submit" name="_test_autopost" class="btn-test">
+            🧪 Тест
+        </button>
+    </div>
+</div>
+{% endblock %}

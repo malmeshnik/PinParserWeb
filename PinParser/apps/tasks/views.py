@@ -103,7 +103,41 @@ def autopost_settings_view(request, task_id):
         if action_type == 'save':
             form = AutoPostConfigForm(request.POST, instance=config)
             if form.is_valid():
+                old_min = config.min_interval
+                old_max = config.max_interval
+
                 form.save()
+
+                # Якщо змінились інтервали і є pending піни в черзі, перерахувати scheduled_at
+                if (old_min != config.min_interval or old_max != config.max_interval):
+                    from apps.tasks.models import AutoPostQueue, PostQueueStatus
+                    from django.utils import timezone
+                    import random
+                    from datetime import timedelta
+
+                    pending_items = AutoPostQueue.objects.filter(
+                        config=config,
+                        status=PostQueueStatus.PENDING
+                    ).order_by('scheduled_at')
+
+                    if pending_items.exists():
+                        # Перерахувати інтервали починаючи з поточного часу
+                        current_time = timezone.now()
+
+                        for idx, item in enumerate(pending_items):
+                            if idx == 0:
+                                # Перший пін - зараз або його оригінальний час (якщо він пізніше)
+                                item.scheduled_at = max(item.scheduled_at, current_time)
+                            else:
+                                # Наступні піни - з новими інтервалами
+                                delay_minutes = random.randint(config.min_interval, config.max_interval)
+                                prev_item = pending_items[idx - 1]
+                                item.scheduled_at = prev_item.scheduled_at + timedelta(minutes=delay_minutes)
+
+                            item.save(update_fields=['scheduled_at'])
+
+                        messages.info(request, f"Перераховано розклад для {pending_items.count()} пінів з новими інтервалами")
+
                 messages.success(request, "Налаштування збережено")
                 return redirect('autopost_settings', task_id=task_id)
 

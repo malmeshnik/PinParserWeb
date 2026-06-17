@@ -420,6 +420,13 @@
         <div class="form-section">
             <h2>Налаштування</h2>
 
+            {% if config.status == 'running' %}
+            <div class="alert alert-warning" style="margin-bottom: 20px;">
+                ℹ️ Налаштування можна змінювати навіть під час активного постингу. Зміни застосуються до всіх пінів що ще не опубліковані.
+                {% if config.status == 'running' %}При зміні інтервалів розклад буде автоматично перерахований.{% endif %}
+            </div>
+            {% endif %}
+
             <div class="form-grid">
                 <div class="form-field">
                     <label for="{{ form.webhook_token.id_for_label }}">{{ form.webhook_token.label }}</label>
