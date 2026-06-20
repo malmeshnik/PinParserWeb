@@ -103,12 +103,12 @@ class ParseTask(models.Model):
 
     total_urls = models.PositiveIntegerField(
         default=0,
-        verbose_name="Зібрано Пінів",
+        verbose_name="Знайдено Пінів",
     )
 
     processed_urls = models.PositiveIntegerField(
         default=0,
-        verbose_name="Оброблено Пінів",
+        verbose_name="Зібрано Пінів",
     )
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата створення")

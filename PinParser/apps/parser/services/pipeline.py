@@ -176,8 +176,6 @@ class PinterestParsePipeline:
             for url in urls
         ]
 
-        processed = 0
-
         def process(kw, url):
             if self.task.status == TaskStatus.STOPPED:
                 return None
@@ -202,17 +200,9 @@ class PinterestParsePipeline:
                     break
 
                 data = future.result()
-                processed += 1
 
                 if data:
                     self._save_result(data)
-
-                if processed % 10 == 0:
-                    self.task.processed_urls = processed
-                    self.task.save(update_fields=["processed_urls"])
-
-        self.task.processed_urls = processed
-        self.task.save(update_fields=["processed_urls"])
 
     def _save_result(self, data: dict):
         image_url = data.get("image_url")
@@ -223,6 +213,11 @@ class PinterestParsePipeline:
             pin_url=data["pin_url"],
             defaults=data,
         )
+
+        if created:
+            ParseTask.objects.filter(id=self.task.id).update(
+                processed_urls=F("processed_urls") + 1
+            )
 
         if created and image_url and pin_id:
             try:
