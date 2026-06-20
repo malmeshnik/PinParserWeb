@@ -118,10 +118,6 @@ class ParseTaskAdmin(admin.ModelAdmin):
         # Prefetch related для оптимізації
         qs = qs.select_related('owner', 'uniqueness_config')
 
-        # Анотуємо кількість результатів замість count() в кожному рядку
-        from django.db.models import Count
-        qs = qs.annotate(results_count=Count('results'))
-
         # Defer великих полів які не показуються в списку
         qs = qs.defer('keywords', 'error_message')
 
@@ -158,10 +154,17 @@ class ParseTaskAdmin(admin.ModelAdmin):
     autopost_settings_link.short_description = "Автопостинг"
 
     def progress_display(self, obj):
-        # Використовуємо анотований results_count замість obj.results.count()
-        parsed = getattr(obj, 'results_count', 0)
-        return f"{parsed}/{obj.total_urls}"
-    progress_display.short_description = "Вдало оброблено/Знайдено пінів"
+        cache_key = f"task_progress_{obj.id}_{obj.processed_urls}_{obj.total_urls}"
+        display = cache.get(cache_key)
+
+        if display is None:
+            display = f"{obj.processed_urls}/{obj.total_urls}"
+            # Кешуємо на 1 хвилину, але ключ включає значення,
+            # тому при зміні в БД кеш фактично оновиться
+            cache.set(cache_key, display, timeout=60)
+
+        return display
+    progress_display.short_description = "Зібрано/Знайдено пінів"
 
     def start_tasks(self, request, queryset):
         PinterestAccount.objects.update(status=AccountStatus.ACTIVE)
