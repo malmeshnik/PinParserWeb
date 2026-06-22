@@ -6,10 +6,11 @@ from django.core.cache import cache
 from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
+from django.utils import timezone
 from django.http import HttpResponse
 from django import forms
 from celery.result import AsyncResult
-from .models import ParseTask, TaskStatus, AutoPostConfig, AutoPostStatus
+from .models import ParseTask, TaskStatus, AutoPostConfig, AutoPostStatus, AutoPostQueue, PostQueueStatus
 from .tasks import run_parse_task
 from .errors import TaskAlreadyRunning
 from apps.results.tasks import export_results_to_excel
@@ -287,6 +288,8 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
         'task_link',
         'status_badge',
         'progress_display',
+        'next_pin_display',
+        'queue_link',
         'board_name',
         'webhook_token_short',
         'started_at',
@@ -364,6 +367,33 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
         )
     progress_display.short_description = "Прогрес"
 
+    def _get_next_queue_item(self, obj):
+        return (
+            AutoPostQueue.objects.select_related('pin')
+            .filter(config=obj, status=PostQueueStatus.PENDING)
+            .order_by('scheduled_at', 'id')
+            .first()
+        )
+
+    def next_pin_display(self, obj):
+        next_item = self._get_next_queue_item(obj)
+
+        if not next_item:
+            return "-"
+
+        next_time = timezone.localtime(next_item.scheduled_at).strftime("%d.%m.%Y %H:%M")
+        return format_html(
+            '<b>{}</b><br><small>Пін #{}</small>',
+            next_time,
+            next_item.pin_id,
+        )
+    next_pin_display.short_description = "Наступний пін"
+
+    def queue_link(self, obj):
+        url = reverse('admin:tasks_autopostqueue_changelist') + f'?config__id__exact={obj.id}'
+        return format_html('<a class="button" href="{}">📋 Черга</a>', url)
+    queue_link.short_description = "Черга"
+
     def webhook_token_short(self, obj):
         if not obj.webhook_token:
             return "-"
@@ -415,6 +445,23 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
                     messages.error(request, f"Помилка публікації піна: {result['error']}")
             return redirect('admin:tasks_autopostconfig_change', obj.id)
 
+        if "_check_next_pin" in request.POST:
+            next_item = self._get_next_queue_item(obj)
+
+            if not next_item:
+                messages.info(request, "У черзі немає пінів у статусі очікування")
+            else:
+                next_time = timezone.localtime(next_item.scheduled_at).strftime("%d.%m.%Y %H:%M")
+                status_text = ""
+                if obj.status != AutoPostStatus.RUNNING:
+                    status_text = " Зараз автопостинг не запущено, тому пін буде опубліковано після відновлення."
+
+                messages.success(
+                    request,
+                    f"Наступний пін #{next_item.pin_id} заплановано на {next_time}.{status_text}"
+                )
+            return redirect('admin:tasks_autopostconfig_change', obj.id)
+
         return super().response_change(request, obj)
 
     def save_model(self, request, obj, form, change):
@@ -453,3 +500,24 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
                     messages.info(request, f"Перераховано розклад для {pending_items.count()} пінів з новими інтервалами")
         else:
             super().save_model(request, obj, form, change)
+
+
+@admin.register(AutoPostQueue)
+class AutoPostQueueAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'config',
+        'pin',
+        'status',
+        'scheduled_at',
+        'posted_at',
+        'attempts',
+    )
+    list_filter = ('status', 'scheduled_at', 'config')
+    search_fields = ('config__task__name', 'pin__title', 'pin__id')
+    list_select_related = ('config', 'config__task', 'pin')
+    ordering = ('scheduled_at',)
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.select_related('config', 'config__task', 'pin')

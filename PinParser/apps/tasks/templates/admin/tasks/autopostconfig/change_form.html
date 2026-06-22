@@ -145,6 +145,24 @@
         color: white;
     }
 
+    .btn-view-queue {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-view-queue:hover {
+        background: #5c636a;
+    }
+
+    .btn-info {
+        background: #0dcaf0;
+        color: white;
+    }
+
+    .btn-info:hover {
+        background: #31d2f2;
+    }
+
     .alert-info-custom {
         background: #d1ecf1;
         border: 1px solid #bee5eb;
@@ -219,6 +237,14 @@
 
         <button type="submit" name="_test_autopost" class="btn-test">
             🧪 Тест
+        </button>
+
+        <a href="{% url 'admin:tasks_autopostqueue_changelist' %}?config__id__exact={{ original.id }}" class="btn-view-queue" style="display:inline-flex; align-items:center; padding:8px 16px; border-radius:4px; text-decoration:none; font-size:13px; font-weight:600;">
+            📋 Черга
+        </a>
+
+        <button type="submit" name="_check_next_pin" class="btn-info">
+            🕒 Наступний пін
         </button>
     </div>
 </div>

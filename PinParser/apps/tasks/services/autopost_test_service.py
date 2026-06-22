@@ -4,6 +4,8 @@
 """
 import requests
 from loguru import logger
+from django.db import transaction
+from django.utils import timezone
 
 from apps.tasks.models import AutoPostConfig, AutoPostQueue, PostQueueStatus
 from apps.results.models import PinResult
@@ -109,6 +111,19 @@ def test_autopost_config(config: AutoPostConfig) -> dict:
         response_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
 
         if response.status_code == 200 and response_data.get('status') == 'success':
+            if pending_queue_item:
+                with transaction.atomic():
+                    pending_queue_item.status = PostQueueStatus.POSTED
+                    pending_queue_item.posted_at = timezone.now()
+                    pending_queue_item.attempts += 1
+                    pending_queue_item.error_message = None
+                    pending_queue_item.save(
+                        update_fields=['status', 'posted_at', 'attempts', 'error_message']
+                    )
+
+                    config.posted_count += 1
+                    config.save(update_fields=['posted_count'])
+
             # Пін успішно опубліковано
             logger.success(f"[AUTOPOST TEST] Тестовий пін #{pin.id} успішно опубліковано")
             return {
