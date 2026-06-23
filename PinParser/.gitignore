@@ -11,3 +11,7 @@ celerybeat-schedule
 venv
 ../venv/
 ./venv/
+/venv/
+../venv/
+..venv
+..venv/

@@ -510,8 +510,12 @@ class AutoPostQueueAdmin(admin.ModelAdmin):
     list_filter = ('status', 'scheduled_at', 'config')
     search_fields = ('config__task__name', 'pin__title', 'pin__id')
     list_select_related = ('config', 'config__task', 'pin')
+    readonly_fields = ('config', "pin", "scheduled_at", "posted_at", "attempts")
     ordering = ('scheduled_at',)
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         return qs.select_related('config', 'config__task', 'pin')
+
+    def has_add_permission(self, request):
+        return False
