@@ -174,8 +174,6 @@ class PinterestParsePipeline:
             for url in urls
         ]
 
-        processed = 0
-
         def process(kw, url):
             if self.task.status == TaskStatus.STOPPED:
                 return None
@@ -200,25 +198,22 @@ class PinterestParsePipeline:
                     break
 
                 data = future.result()
-                processed += 1
 
                 if data:
                     self._save_result(data)
 
-                if processed % 10 == 0:
-                    self.task.processed_urls = processed
-                    self.task.save(update_fields=["processed_urls"])
-
-        self.task.processed_urls = processed
-        self.task.save(update_fields=["processed_urls"])
-
     def _save_result(self, data: dict):
-        PinResult.objects.get_or_create(
+        pin, created = PinResult.objects.get_or_create(
             task=self.task,
             pin_url=data["pin_url"],
             defaults=data,
         )
 
+        if created:
+            ParseTask.objects.filter(id=self.task.id).update(
+                processed_urls=F("processed_urls") + 1
+            )
+            
     def _fail_task(self, message: str):
         logger.error(f"[PIPELINE] {message}")
         self.task.mark_failed(message)

@@ -127,8 +127,16 @@ class ParseTaskAdmin(admin.ModelAdmin):
     view_results_link.short_description = "Результати"
 
     def progress_display(self, obj):
-        parsed = obj.results.count()
-        return f"{parsed}/{obj.total_urls}"
+        cache_key = f"task_progress_{obj.id}_{obj.processed_urls}_{obj.total_urls}"
+        display = cache.get(cache_key)
+
+        if display is None:
+            display = f"{obj.processed_urls}/{obj.total_urls}"
+            # Кешуємо на 1 хвилину, але ключ включає значення,
+            # тому при зміні в БД кеш фактично оновиться
+            cache.set(cache_key, display, timeout=60)
+
+        return display
     progress_display.short_description = "Вдало оброблено/Знайдено пінів"
 
     def start_tasks(self, request, queryset):
