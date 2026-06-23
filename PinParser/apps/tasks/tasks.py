@@ -231,7 +231,7 @@ def _process_single_post(item: AutoPostQueue):
         timeout=30,
     )
 
-    if response.status_code in (200, 201):
+    if response.status_code in [200, 201, 202]:
         # Успіх
         with transaction.atomic():
             item.status = PostQueueStatus.POSTED

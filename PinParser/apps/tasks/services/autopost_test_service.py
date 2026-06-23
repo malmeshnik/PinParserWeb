@@ -110,7 +110,7 @@ def test_autopost_config(config: AutoPostConfig) -> dict:
 
         response_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
 
-        if response.status_code == 200 and response_data.get('status') == 'success':
+        if response.status_code == 200:
             if pending_queue_item:
                 with transaction.atomic():
                     pending_queue_item.status = PostQueueStatus.POSTED
