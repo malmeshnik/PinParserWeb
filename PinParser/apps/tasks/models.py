@@ -1,71 +1,71 @@
 from django.db import models
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
+from django.conf import settings
 
 
 # Create your models here.
 class TaskStatus(models.TextChoices):
-    PENDING = "pending", "Очікує"
-    RUNNING = "running", "В процесі"
-    WAITING_UNIQUENESS = 'waiting_uniqueness', "Очікує унікалізації",
-    UNIQUENESS = "uniqueness", "Унікалізація"
-    DONE = "done", "Виконано"
-    ERROR = "error", "Помилка"
-    STOPPED = "stopped", "Зупинено"
+    PENDING = "pending", _("Ожидает")
+    RUNNING = "running", _("В процессе")
+    WAITING_UNIQUENESS = 'waiting_uniqueness', _("Ожидает уникализации"),
+    UNIQUENESS = "uniqueness", _("Уникализация")
+    DONE = "done", _("Выполнено")
+    ERROR = "error", _("Ошибка")
+    STOPPED = "stopped", _("Остановлено")
 
 
 class AutoPostStatus(models.TextChoices):
-    IDLE = "idle", "Не активний"
-    RUNNING = "running", "Постинг"
-    PAUSED = "paused", "На паузі"
-    COMPLETED = "completed", "Завершено"
-    ERROR = "error", "Помилка"
+    IDLE = "idle", _("Не активен")
+    RUNNING = "running", _("Постинг")
+    PAUSED = "paused", _("На паузе")
+    COMPLETED = "completed", _("Завершено")
+    ERROR = "error", _("Ошибка")
 
 
 class PostQueueStatus(models.TextChoices):
-    PENDING = "pending", "Очікує"
-    POSTED = "posted", "Опубліковано"
-    FAILED = "failed", "Помилка"
-    SKIPPED = "skipped", "Пропущено"
+    PENDING = "pending", _("Ожидает")
+    POSTED = "posted", _("Опубликовано")
+    FAILED = "failed", _("Ошибка")
+    SKIPPED = "skipped", _("Пропущено")
 
-
-from django.conf import settings
 
 def get_default_uniqueness_config():
-        from apps.uniqueness.models import UniquenessConfig
+    from apps.uniqueness.models import UniquenessConfig
 
-        config = (
-            UniquenessConfig.objects
-            .filter(is_active=True)
-            .order_by("id")
-            .first()
-        )
+    config = (
+        UniquenessConfig.objects
+        .filter(is_active=True)
+        .order_by("id")
+        .first()
+    )
 
-        return config.id if config else None
+    return config.id if config else None
 
 class ParseTask(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="tasks",
-        verbose_name="Власник",
+        verbose_name=_("Владелец"),
         null=True,
         blank=True
     )
-    name = models.CharField(max_length=255, verbose_name="Назва завдання")
-    keywords = models.JSONField(verbose_name="Ключові слова", default=list)
+    name = models.CharField(max_length=255, verbose_name=_("Название задания"))
+    keywords = models.JSONField(verbose_name=_("Ключевые слова"), default=list)
 
     status = models.CharField(
         max_length=20,
         choices=TaskStatus.choices,
         default=TaskStatus.PENDING,
-        verbose_name="Статус завдання",
+        verbose_name=_("Статус задания"),
     )
 
     threads = models.PositiveSmallIntegerField(
-        default=3, verbose_name="Кількість потоків"
+        default=3, verbose_name=_("Количество потоков")
     )
     use_uniqueness = models.BooleanField(
-        default=True, verbose_name="Використовувати унікальність"
+        default=True, verbose_name=_("Использовать уникальность")
     )
     uniqueness_config = models.ForeignKey(
         "uniqueness.UniquenessConfig",
@@ -74,58 +74,59 @@ class ParseTask(models.Model):
         null=True,
         blank=True,
         default=get_default_uniqueness_config,
-        verbose_name="Конфіг унікалізації"
+        verbose_name=_("Конфиг уникализации")
     )
     auto_sheet_name = models.BooleanField(
-        default=True, verbose_name="Автоматична назва таблиці"
+        default=True, verbose_name=_("Автоматическое название таблицы")
     )
 
     table_name = models.CharField(
         max_length=255,
         blank=True,
         null=True,
-        verbose_name="Назва таблиці результатів",
+        verbose_name=_("Название таблицы результатов"),
     )
 
     export_file = models.FileField(
         upload_to="exports/",
         null=True,
-        blank=True
+        blank=True,
+        verbose_name=_("Файл экспорта")
     )
 
     celery_task_id = models.CharField(
         max_length=255,
         blank=True,
         null=True,
-        verbose_name="ID Celery задачі",
+        verbose_name=_("ID Celery задачи"),
         db_index=True,
     )
 
     total_urls = models.PositiveIntegerField(
         default=0,
-        verbose_name="Знайдено Пінів",
+        verbose_name=_("Найдено Пинов"),
     )
 
     processed_urls = models.PositiveIntegerField(
         default=0,
-        verbose_name="Зібрано Пінів",
+        verbose_name=_("Собрано Пинов"),
     )
 
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата створення")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Дата создания"))
     started_at = models.DateTimeField(
-        blank=True, null=True, verbose_name="Дата початку"
+        blank=True, null=True, verbose_name=_("Дата начала")
     )
     finished_at = models.DateTimeField(
-        blank=True, null=True, verbose_name="Дата завершення"
+        blank=True, null=True, verbose_name=_("Дата завершения")
     )
 
     error_message = models.TextField(
-        blank=True, null=True, verbose_name="Повідомлення про помилку"
+        blank=True, null=True, verbose_name=_("Сообщение об ошибке")
     )
 
     class Meta:
-        verbose_name = "Завдання парсингу"
-        verbose_name_plural = "Завдання парсингу"
+        verbose_name = _("Задание парсинга")
+        verbose_name_plural = _("Задания парсинга")
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["-created_at"]),
@@ -134,7 +135,7 @@ class ParseTask(models.Model):
         ]
 
     def __str__(self):
-        return f"Завдання №{self.id} - {self.name}"
+        return _("Задание №%(id)s - %(name)s") % {"id": self.id, "name": self.name}
     
     def mark_running(self, celery_task_id: str):
         self.status = TaskStatus.RUNNING
@@ -182,58 +183,58 @@ class AutoPostConfig(models.Model):
         ParseTask,
         on_delete=models.CASCADE,
         related_name="autopost_config",
-        verbose_name="Завдання",
+        verbose_name=_("Задание"),
     )
 
     webhook_token = models.UUIDField(
-        verbose_name="Webhook токен",
-        help_text="UUID токен з сервісу автопостингу",
+        verbose_name=_("Webhook токен"),
+        help_text=_("UUID токен из сервиса автопостинга"),
         blank=True,
         null=True,
     )
 
     board_name = models.CharField(
         max_length=255,
-        verbose_name="Назва дошки Pinterest",
+        verbose_name=_("Название доски Pinterest"),
     )
 
     min_interval = models.PositiveIntegerField(
         default=100,
-        verbose_name="Мінімальний інтервал (хвилини)",
-        help_text="Мінімальний час між постами в хвилинах",
+        verbose_name=_("Минимальный интервал (минуты)"),
+        help_text=_("Минимальное время между постами в минутах"),
     )
 
     max_interval = models.PositiveIntegerField(
         default=200,
-        verbose_name="Максимальний інтервал (хвилини)",
-        help_text="Максимальний час між постами в хвилинах",
+        verbose_name=_("Максимальный интервал (минуты)"),
+        help_text=_("Максимальное время между постами в минутах"),
     )
 
     site_url = models.URLField(
         max_length=500,
-        verbose_name="Базовий URL сайту",
-        help_text="Наприклад: https://example.com/?",
+        verbose_name=_("Базовый URL сайта"),
+        help_text=_("Например: https://example.com/?"),
         default="https://example.com/?",
     )
 
     use_uniqueness = models.BooleanField(
         default=True,
-        verbose_name="Унікалізувати перед постингом",
+        verbose_name=_("Уникализировать перед постингом"),
     )
 
     groq_api_key = models.CharField(
         max_length=255,
         blank=True,
         null=True,
-        verbose_name="Groq API ключ",
-        help_text="Ключ для унікалізації через Groq",
+        verbose_name=_("Groq API ключ"),
+        help_text=_("Ключ для уникализации через Groq"),
     )
 
     groq_prompt = models.TextField(
         blank=True,
         null=True,
-        verbose_name="Промпт для унікалізації",
-        help_text="Кастомний промпт для Groq API",
+        verbose_name=_("Промпт для уникализации"),
+        help_text=_("Кастомный промпт для Groq API"),
         default=(
             "Uniquify the following Pinterest pin content. Return ONLY a JSON object with 'title' and 'description' keys.\n\n"
             "Original Title: {{title}}\n"
@@ -251,60 +252,60 @@ class AutoPostConfig(models.Model):
         max_length=20,
         choices=AutoPostStatus.choices,
         default=AutoPostStatus.IDLE,
-        verbose_name="Статус автопостингу",
+        verbose_name=_("Статус автопостинга"),
     )
 
     celery_task_id = models.CharField(
         max_length=255,
         blank=True,
         null=True,
-        verbose_name="ID Celery задачі автопостингу",
+        verbose_name=_("ID Celery задачи автопостинга"),
     )
 
     posted_count = models.PositiveIntegerField(
         default=0,
-        verbose_name="Опубліковано пінів",
+        verbose_name=_("Опубликовано пинов"),
     )
 
     total_count = models.PositiveIntegerField(
         default=0,
-        verbose_name="Всього пінів",
+        verbose_name=_("Всего пинов"),
     )
 
     error_message = models.TextField(
         blank=True,
         null=True,
-        verbose_name="Повідомлення про помилку",
+        verbose_name=_("Сообщение об ошибке"),
     )
 
     started_at = models.DateTimeField(
         blank=True,
         null=True,
-        verbose_name="Дата початку постингу",
+        verbose_name=_("Дата начала постинга"),
     )
 
     finished_at = models.DateTimeField(
         blank=True,
         null=True,
-        verbose_name="Дата завершення постингу",
+        verbose_name=_("Дата завершения постинга"),
     )
 
     created_at = models.DateTimeField(
         auto_now_add=True,
-        verbose_name="Дата створення",
+        verbose_name=_("Дата создания"),
     )
 
     updated_at = models.DateTimeField(
         auto_now=True,
-        verbose_name="Дата оновлення",
+        verbose_name=_("Дата обновления"),
     )
 
     class Meta:
-        verbose_name = "Налаштування автопостингу"
-        verbose_name_plural = "Налаштування автопостингу"
+        verbose_name = _("Настройка автопостинга")
+        verbose_name_plural = _("Настройки автопостинга")
 
     def __str__(self):
-        return f"Автопостинг для завдання #{self.task.id}"
+        return _("Автопостинг для задания #%(id)s") % {"id": self.task.id}
 
 
 class AutoPostQueue(models.Model):
@@ -314,18 +315,18 @@ class AutoPostQueue(models.Model):
         AutoPostConfig,
         on_delete=models.CASCADE,
         related_name="queue_items",
-        verbose_name="Конфігурація автопостингу",
+        verbose_name=_("Конфигурация автопостинга"),
     )
 
     pin = models.ForeignKey(
         "results.PinResult",
         on_delete=models.CASCADE,
         related_name="post_queue_items",
-        verbose_name="Пін",
+        verbose_name=_("Пин"),
     )
 
     scheduled_at = models.DateTimeField(
-        verbose_name="Заплановано на",
+        verbose_name=_("Запланировано на"),
         db_index=True,
     )
 
@@ -333,35 +334,35 @@ class AutoPostQueue(models.Model):
         max_length=20,
         choices=PostQueueStatus.choices,
         default=PostQueueStatus.PENDING,
-        verbose_name="Статус",
+        verbose_name=_("Статус"),
         db_index=True,
     )
 
     posted_at = models.DateTimeField(
         blank=True,
         null=True,
-        verbose_name="Опубліковано",
+        verbose_name=_("Опубликовано"),
     )
 
     error_message = models.TextField(
         blank=True,
         null=True,
-        verbose_name="Повідомлення про помилку",
+        verbose_name=_("Сообщение об ошибке"),
     )
 
     attempts = models.PositiveSmallIntegerField(
         default=0,
-        verbose_name="Кількість спроб",
+        verbose_name=_("Количество попыток"),
     )
 
     created_at = models.DateTimeField(
         auto_now_add=True,
-        verbose_name="Дата створення",
+        verbose_name=_("Дата создания"),
     )
 
     class Meta:
-        verbose_name = "Елемент черги автопостингу"
-        verbose_name_plural = "Черга автопостингу"
+        verbose_name = _("Элемент очереди автопостинга")
+        verbose_name_plural = _("Очередь автопостинга")
         ordering = ["scheduled_at"]
         indexes = [
             models.Index(fields=["status", "scheduled_at"]),
@@ -369,4 +370,7 @@ class AutoPostQueue(models.Model):
         ]
 
     def __str__(self):
-        return f"Пост #{self.pin.id} заплановано на {self.scheduled_at}"
+        return _("Пост #%(pin_id)s запланирован на %(time)s") % {
+            "pin_id": self.pin.id,
+            "time": self.scheduled_at
+        }
