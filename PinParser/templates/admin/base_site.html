@@ -1,0 +1,23 @@
+{% extends 'admin/base.html' %}
+{% load i18n %}
+
+{% block extrahead %}
+{{ block.super }}
+<script>
+    (function() {
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const cookieName = 'django_timezone';
+        const currentCookie = document.cookie.split('; ').find(row => row.startsWith(cookieName + '='));
+
+        if (!currentCookie || currentCookie.split('=')[1] !== timezone) {
+            document.cookie = cookieName + '=' + timezone + '; path=/; SameSite=Lax';
+            // Optional: Reload to apply timezone immediately if it changed
+            // window.location.reload();
+        }
+    })();
+</script>
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></h1>
+{% endblock %}

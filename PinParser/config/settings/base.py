@@ -1,5 +1,6 @@
 from pathlib import Path
 import environ
+from django.utils.translation import gettext_lazy as _
 
 from celery.schedules import crontab
 
@@ -26,6 +27,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'drf_spectacular',
 
+    'apps.core',
     'apps.parser',
     'apps.accounts',
     'apps.proxies',
@@ -39,9 +41,11 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.core.middleware.TimezoneMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -51,7 +55,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -91,9 +95,19 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-LANGUAGE_CODE = 'uk'
-TIME_ZONE = 'Europe/Kyiv'
+LANGUAGE_CODE = 'ru'
+TIME_ZONE = 'UTC'
+USE_I18N = True
 USE_TZ = True
+
+LANGUAGES = [
+    ('ru', _('Russian')),
+    ('uk', _('Ukrainian')),
+]
+
+LOCALE_PATHS = [
+    BASE_DIR / 'locale',
+]
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'

@@ -7,6 +7,7 @@ from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from django.http import HttpResponse
 from django import forms
 from celery.result import AsyncResult
@@ -22,8 +23,8 @@ from apps.proxies.models import Proxy, ProxyStatus
 class ParseTaskForm(forms.ModelForm):
     keywords_text = forms.CharField(
         widget=forms.Textarea(attrs={'rows': 5}),
-        help_text="Введіть ключові слова, кожне з нового рядка",
-        label="Ключові слова (текст)",
+        help_text=_("Введите ключевые слова, каждое с новой строки"),
+        label=_("Ключевые слова (текст)"),
         required=False
     )
 
@@ -54,9 +55,9 @@ class ParseTaskAdmin(admin.ModelAdmin):
     search_fields = ('name', 'keywords')
     exclude = ('keywords', 'celery_task_id')
     list_select_related = ('owner', 'uniqueness_config')
-    list_per_page = 50  # Пагінація по 50 замість 100 за замовчуванням
-    show_full_result_count = False  # Не рахувати total count (швидше)
-    ordering = ('-created_at',)  # Нові завдання зверху
+    list_per_page = 50
+    show_full_result_count = False
+    ordering = ('-created_at',)
 
     readonly_fields = (
         "error_message",
@@ -67,13 +68,13 @@ class ParseTaskAdmin(admin.ModelAdmin):
     )
 
     fieldsets = (
-        ("Основне", {
+        (_("Основное"), {
             "fields": ("name", "keywords_text", "threads")
         }),
-        ("Опції", {
+        (_("Опции"), {
             "fields": ("use_uniqueness", "uniqueness_config")
         }),
-        ("Статус", {
+        (_("Статус"), {
             "fields": (
                 "status",
                 "error_message",
@@ -81,7 +82,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
                 "total_urls",
             )
         }),
-        ("Дати", {
+        (_("Даты"), {
             "fields": ("started_at", "finished_at")
         }),
     )
@@ -99,27 +100,22 @@ class ParseTaskAdmin(admin.ModelAdmin):
             colors.get(obj.status, "#000"),
             obj.get_status_display().upper(),
         )
-    status_badge.short_description = "Статус"
+    status_badge.short_description = _("Статус")
 
     def short_error_message(self, obj):
         if not obj.error_message:
             return "-"
-        # Показуємо тільки перші 50 символів
         if len(obj.error_message) > 50:
             return obj.error_message[:50] + "..."
         return obj.error_message
-    short_error_message.short_description = "Помилка"
+    short_error_message.short_description = _("Ошибка")
 
 
     actions = ['start_tasks', 'stop_task', 'export_to_excel', 'uniqueness_task', 'generate_slug_task', 'download_files']
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-
-        # Prefetch related для оптимізації
         qs = qs.select_related('owner', 'uniqueness_config')
-
-        # Defer великих полів які не показуються в списку
         qs = qs.defer('keywords', 'error_message')
 
         if not request.user.is_superuser:
@@ -141,18 +137,17 @@ class ParseTaskAdmin(admin.ModelAdmin):
             obj.export_file.url
         )
 
-    download_excel.short_description = "Excel"
+    download_excel.short_description = _("Excel")
 
     def view_results_link(self, obj):
         url = reverse('admin:results_pinresult_changelist') + f'?task__id__exact={obj.id}'
-        return format_html('<a class="button" href="{}">📊 Результати</a>', url)
-    view_results_link.short_description = "Результати"
+        return format_html('<a class="button" href="{}">📊 {}</a>', url, _("Результаты"))
+    view_results_link.short_description = _("Результаты")
 
     def autopost_settings_link(self, obj):
-        # TODO: Додати URL для налаштування автопостингу
         url = f"/admin/tasks/parsetask/{obj.id}/autopost/"
-        return format_html('<a class="button" href="{}">⚙️ Автопостинг</a>', url)
-    autopost_settings_link.short_description = "Автопостинг"
+        return format_html('<a class="button" href="{}">⚙️ {}</a>', url, _("Автопостинг"))
+    autopost_settings_link.short_description = _("Автопостинг")
 
     def progress_display(self, obj):
         cache_key = f"task_progress_{obj.id}_{obj.processed_urls}_{obj.total_urls}"
@@ -160,28 +155,23 @@ class ParseTaskAdmin(admin.ModelAdmin):
 
         if display is None:
             display = f"{obj.processed_urls}/{obj.total_urls}"
-            # Кешуємо на 1 хвилину, але ключ включає значення,
-            # тому при зміні в БД кеш фактично оновиться
             cache.set(cache_key, display, timeout=60)
 
         return display
-    progress_display.short_description = "Зібрано/Знайдено пінів"
+    progress_display.short_description = _("Собрано/Найдено пинов")
 
     def start_tasks(self, request, queryset):
         PinterestAccount.objects.update(status=AccountStatus.ACTIVE)
         Proxy.objects.update(status=ProxyStatus.ACTIVE)
 
         for task in queryset:
-
             self.start_task(request, task)
 
-        self.message_user(request, "Завдання запущені")
-    start_tasks.short_description = "▶️ Запустити вибрані завдання"
+        self.message_user(request, _("Задания запущены"))
+    start_tasks.short_description = _("▶️ Запустить выбранные задания")
 
     def stop_task(self, request, queryset):
-
         stopped = 0
-
         for task in queryset:
             if task.status in (
                 TaskStatus.RUNNING,
@@ -203,30 +193,30 @@ class ParseTaskAdmin(admin.ModelAdmin):
                 task.save(update_fields=["status", "celery_task_id"])
                 stopped += 1
 
-        self.message_user(request, f"Зупинено задач: {stopped}")
-    stop_task.short_description = "⛔ Зупинити виконання вибраних завдань"
+        self.message_user(request, _("Остановлено задач: %(stopped)s") % {'stopped': stopped})
+    stop_task.short_description = _("⛔ Остановить выполнение выбранных заданий")
 
-    @admin.action(description="📤 Експорт у Excel")
+    @admin.action(description=_("📤 Экспорт в Excel"))
     def export_to_excel(self, request, queryset):
         for task in queryset:
             export_results_to_excel.delay(task.id)
 
-    @admin.action(description="Унікалізувати")
+    @admin.action(description=_("Уникализировать"))
     def uniqueness_task(self, request, queryset):
         for task in queryset:
             run_uniqueness.delay(task.id)
 
-    @admin.action(description="Згенерувати slug")
+    @admin.action(description=_("Сгенерировать slug"))
     def generate_slug_task(self, request, queryset):
         for task in queryset:
             generate_slugs.delay(task.id)
 
-    @admin.action(description="⬇️ Завантажити вибрані файли")
+    @admin.action(description=_("⬇️ Скачать выбранные файлы"))
     def download_files(self, request, queryset):
         files = queryset.exclude(export_file="")
 
         if not files.exists():
-            self.message_user(request, "Немає файлів для завантаження")
+            self.message_user(request, _("Нет файлов для скачивания"))
             return
 
         if files.count() == 1:
@@ -277,7 +267,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
         task.celery_task_id = result.id
         task.status = TaskStatus.RUNNING
         task.save(update_fields=["celery_task_id", "status"])
-        self.message_user(request, f"Завдання {task.id} запущено 🚀")
+        self.message_user(request, _("Задание %(id)s запущено 🚀") % {'id': task.id})
 
 
 @admin.register(AutoPostConfig)
@@ -311,22 +301,22 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
     ordering = ('-created_at',)
 
     fieldsets = (
-        ("Основна інформація", {
+        (_("Основная информация"), {
             "fields": ("task", "status", "started_at", "finished_at")
         }),
-        ("Прогрес", {
+        (_("Прогресс"), {
             "fields": ("posted_count", "total_count")
         }),
-        ("Налаштування Pinterest", {
+        (_("Настройки Pinterest"), {
             "fields": ("webhook_token", "board_name")
         }),
-        ("Налаштування інтервалів", {
+        (_("Настройки интервалов"), {
             "fields": ("min_interval", "max_interval", "site_url")
         }),
-        ("Налаштування унікалізації", {
+        (_("Настройки уникализации"), {
             "fields": ("use_uniqueness", "groq_api_key", "groq_prompt")
         }),
-        ("Технічна інформація", {
+        (_("Техническая информация"), {
             "fields": ("celery_task_id", "error_message", "created_at", "updated_at"),
             "classes": ("collapse",)
         }),
@@ -345,12 +335,12 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
             colors.get(obj.status, "#000"),
             obj.get_status_display().upper(),
         )
-    status_badge.short_description = "Статус"
+    status_badge.short_description = _("Статус")
 
     def task_link(self, obj):
         url = reverse('admin:tasks_parsetask_change', args=[obj.task.id])
         return format_html('<a href="{}">{}</a>', url, obj.task.name)
-    task_link.short_description = "Завдання"
+    task_link.short_description = _("Задание")
 
     def progress_display(self, obj):
         if obj.total_count == 0:
@@ -365,7 +355,7 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
             obj.total_count,
             percentage_str
         )
-    progress_display.short_description = "Прогрес"
+    progress_display.short_description = _("Прогресс")
 
     def _get_next_queue_item(self, obj):
         return (
@@ -383,30 +373,29 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
 
         next_time = timezone.localtime(next_item.scheduled_at).strftime("%d.%m.%Y %H:%M")
         return format_html(
-            '<b>{}</b><br><small>Пін #{}</small>',
+            '<b>{}</b><br><small>{} #{}</small>',
             next_time,
+            _("Пин"),
             next_item.pin_id,
         )
-    next_pin_display.short_description = "Наступний пін"
+    next_pin_display.short_description = _("Следующий пин")
 
     def queue_link(self, obj):
         url = reverse('admin:tasks_autopostqueue_changelist') + f'?config__id__exact={obj.id}'
-        return format_html('<a class="button" href="{}">📋 Черга</a>', url)
-    queue_link.short_description = "Черга"
+        return format_html('<a class="button" href="{}">📋 {}</a>', url, _("Очередь"))
+    queue_link.short_description = _("Очередь")
 
     def webhook_token_short(self, obj):
         if not obj.webhook_token:
             return "-"
         token_str = str(obj.webhook_token)
         return f"{token_str[:8]}...{token_str[-4:]}"
-    webhook_token_short.short_description = "Webhook токен"
+    webhook_token_short.short_description = _("Webhook токен")
 
     def has_add_permission(self, request):
-        # Заборонити додавання через адмін панель (тільки через ParseTask)
         return False
 
     def response_change(self, request, obj):
-        """Обробка кастомних кнопок в change form"""
         from django.shortcuts import redirect
         from django.contrib import messages
         from .tasks import initialize_autopost_queue
@@ -414,63 +403,68 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
 
         if "_start_autopost" in request.POST:
             if obj.status == AutoPostStatus.RUNNING:
-                messages.warning(request, "Автопостинг вже запущено")
+                messages.warning(request, _("Автопостинг уже запущен"))
             elif not obj.webhook_token or not obj.board_name:
-                messages.error(request, "Заповніть webhook токен та назву дошки перед запуском")
+                messages.error(request, _("Заполните webhook токен и название доски перед запуском"))
             else:
                 initialize_autopost_queue.delay(obj.id)
-                messages.success(request, "Автопостинг запущено. Черга створюється...")
+                messages.success(request, _("Автопостинг запущен. Очередь создается..."))
             return redirect('admin:tasks_autopostconfig_change', obj.id)
 
         if "_stop_autopost" in request.POST:
             if obj.status == AutoPostStatus.RUNNING:
                 obj.status = AutoPostStatus.PAUSED
                 obj.save(update_fields=['status'])
-                messages.success(request, "Автопостинг зупинено")
+                messages.success(request, _("Автопостинг остановлен"))
             else:
-                messages.warning(request, "Автопостинг не запущено")
+                messages.warning(request, _("Автопостинг не запущен"))
             return redirect('admin:tasks_autopostconfig_change', obj.id)
 
         if "_test_autopost" in request.POST:
             if not obj.webhook_token or not obj.board_name:
-                messages.error(request, "Заповніть webhook токен та назву дошки перед тестом")
+                messages.error(request, _("Заполните webhook токен и название доски перед тестом"))
             else:
                 result = test_autopost_config(obj)
                 if result['success']:
                     messages.success(
                         request,
-                        f"Пін #{result['pin_id']} успішно опубліковано! Статус: {result['response_status']}"
+                        _("Пин #%(pin_id)s успешно опубликован! Статус: %(status)s") % {
+                            'pin_id': result['pin_id'],
+                            'status': result['response_status']
+                        }
                     )
                 else:
-                    messages.error(request, f"Помилка публікації піна: {result['error']}")
+                    messages.error(request, _("Ошибка публикации пина: %(error)s") % {'error': result['error']})
             return redirect('admin:tasks_autopostconfig_change', obj.id)
 
         if "_check_next_pin" in request.POST:
             next_item = self._get_next_queue_item(obj)
 
             if not next_item:
-                messages.info(request, "У черзі немає пінів у статусі очікування")
+                messages.info(request, _("В очереди нет пинов в статусе ожидания"))
             else:
                 next_time = timezone.localtime(next_item.scheduled_at).strftime("%d.%m.%Y %H:%M")
                 status_text = ""
                 if obj.status != AutoPostStatus.RUNNING:
-                    status_text = " Зараз автопостинг не запущено, тому пін буде опубліковано після відновлення."
+                    status_text = _(" Сейчас автопостинг не запущен, поэтому пин будет опубликован после возобновления.")
 
                 messages.success(
                     request,
-                    f"Наступний пін #{next_item.pin_id} заплановано на {next_time}.{status_text}"
+                    _("Следующий пин #%(pin_id)s запланирован на %(time)s.%(status)s") % {
+                        'pin_id': next_item.pin_id,
+                        'time': next_time,
+                        'status': status_text
+                    }
                 )
             return redirect('admin:tasks_autopostconfig_change', obj.id)
 
         return super().response_change(request, obj)
 
     def save_model(self, request, obj, form, change):
-        """При збереженні - перерахувати інтервали якщо вони змінились"""
         if change:
             old_obj = AutoPostConfig.objects.get(pk=obj.pk)
             super().save_model(request, obj, form, change)
 
-            # Якщо змінились інтервали, перерахувати pending піни
             if old_obj.min_interval != obj.min_interval or old_obj.max_interval != obj.max_interval:
                 from apps.tasks.models import AutoPostQueue, PostQueueStatus
                 from django.utils import timezone
@@ -497,7 +491,7 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
 
                         item.save(update_fields=['scheduled_at'])
 
-                    messages.info(request, f"Перераховано розклад для {pending_items.count()} пінів з новими інтервалами")
+                    messages.info(request, _("Пересчитано расписание для %(count)s пинов с новыми интервалами") % {'count': pending_items.count()})
         else:
             super().save_model(request, obj, form, change)
 
