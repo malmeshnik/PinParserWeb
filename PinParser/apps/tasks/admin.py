@@ -63,7 +63,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ("Основне", {
-            "fields": ("name", "keywords_text", "threads")
+            "fields": ("name", "keywords_text", "anotation_filter_1", "anotation_filter_2", "threads")
         }),
         ("Опції", {
             "fields": ("use_uniqueness", "uniqueness_config")

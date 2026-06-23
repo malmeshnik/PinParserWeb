@@ -203,6 +203,38 @@ class PinterestParsePipeline:
                     self._save_result(data)
 
     def _save_result(self, data: dict):
+        annotation = data.get("annotation", "")  # Переконайся, що ключ називається саме так
+        
+        filter1_words = [w.strip() for w in self.task.anotation_filter_1.split(",")] if self.task.anotation_filter_1 else []
+        filter2_words = [w.strip() for w in self.task.anotation_filter_2.split(",")] if self.task.anotation_filter_2 else []
+
+        def contains_any_word(text, words_list):
+            if not words_list:
+                return False
+           
+            if text:
+                text_lower = text.lower() 
+            else:
+                return False
+                
+            return any(word.lower() in text_lower for word in words_list if word)
+
+        if filter1_words and filter2_words:
+            
+            if not (contains_any_word(annotation, filter1_words) and contains_any_word(annotation, filter2_words)):
+                return 
+                
+        elif filter1_words:
+            
+            if not contains_any_word(annotation, filter1_words):
+                return
+                
+        elif filter2_words:
+            
+            if not contains_any_word(annotation, filter2_words):
+                return
+
+        # --- Збереження (виконується, тільки якщо пройшли фільтри) ---
         pin, created = PinResult.objects.get_or_create(
             task=self.task,
             pin_url=data["pin_url"],
@@ -213,7 +245,7 @@ class PinterestParsePipeline:
             ParseTask.objects.filter(id=self.task.id).update(
                 processed_urls=F("processed_urls") + 1
             )
-            
+
     def _fail_task(self, message: str):
         logger.error(f"[PIPELINE] {message}")
         self.task.mark_failed(message)

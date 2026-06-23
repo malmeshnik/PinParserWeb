@@ -38,6 +38,8 @@ class ParseTask(models.Model):
     )
     name = models.CharField(max_length=255, verbose_name="Назва завдання")
     keywords = models.JSONField(verbose_name="Ключові слова", default=list)
+    anotation_filter_1 = models.CharField(blank=True, null=True, verbose_name="Фільтр анотації 1")
+    anotation_filter_2 = models.CharField(blank=True, null=True, verbose_name="Фільтр анотації 2")
 
     status = models.CharField(
         max_length=20,
@@ -47,7 +49,7 @@ class ParseTask(models.Model):
     )
 
     threads = models.PositiveSmallIntegerField(
-        default=3, verbose_name="Кількість потоків"
+        default=1, verbose_name="Кількість потоків"
     )
     use_uniqueness = models.BooleanField(
         default=True, verbose_name="Використовувати унікальність"
