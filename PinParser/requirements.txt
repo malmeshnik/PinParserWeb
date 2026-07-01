@@ -16,3 +16,4 @@ python-slugify
 gunicorn
 openpyxl
 drf-spectacular
+Pillow
