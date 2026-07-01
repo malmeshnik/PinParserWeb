@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'rest_framework',
+    'rest_framework.authtoken',
     'drf_spectacular',
 
     'apps.core',
@@ -72,11 +73,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': env("POSTGRES_DB"),
-        'USER': env("POSTGRES_USER"),
-        'PASSWORD': env("POSTGRES_PASSWORD"),
-        'HOST': env("DB_HOST"),
-        'PORT': env("DB_PORT"),
+        'NAME': env("POSTGRES_DB", default=""),
+        'USER': env("POSTGRES_USER", default=""),
+        'PASSWORD': env("POSTGRES_PASSWORD", default=""),
+        'HOST': env("DB_HOST", default=""),
+        'PORT': env("DB_PORT", default=""),
     }
 }
 
@@ -141,6 +142,7 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.BasicAuthentication',
+        'rest_framework.authentication.TokenAuthentication',
     ],
 }
 
