@@ -4,20 +4,26 @@ PROJECT_NAME=pinparser
 
 echo "🔧 Installing systemd service..."
 
-sudo cp deploy/pinparser.service /etc/systemd/system/${PROJECT_NAME}.service
-sudo cp deploy/pinparser-celery.service /etc/systemd/system/
+sudo cp deploy/pinparser.service /etc/systemd/system/
+sudo cp deploy/pinparser-celery-parser.service /etc/systemd/system/
 sudo cp deploy/pinparser-celery-beat.service /etc/systemd/system/
+sudo cp deploy/pinparser-celery-excel.service /etc/systemd/system/
+sudo cp deploy/pinparser-celery-ai.service /etc/systemd/system/
 
 sudo systemctl daemon-reload
 
-sudo systemctl enable ${PROJECT_NAME}
-sudo systemctl enable pinparser-celery
+sudo systemctl enable pinparser
+sudo systemctl enable pinparser-celery-parser
 sudo systemctl enable pinparser-celery-beat
+sudo systemctl enable pinparser-celery-excel
+sudo systemctl enable pinparser-celery-ai
 
-sudo systemctl restart ${PROJECT_NAME}
-sudo systemctl restart pinparser-celery
+sudo systemctl restart pinparser
+sudo systemctl restart pinparser-celery-parser
 sudo systemctl restart pinparser-celery-beat
+sudo systemctl restart pinparser-celery-ai
+sudo systemctl restart pinparser-celery-excel
 
 echo "✅ Services started!"
 
-sudo systemctl status ${PROJECT_NAME}
+sudo systemctl status pinparser
