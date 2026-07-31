@@ -4,9 +4,9 @@ After=network.target
 
 [Service] 
 User=root
-WorkingDirectory=/root/PinParser/PinParser 
-Environment="PATH=/root/PinParser/PinParser/venv/bin" 
-ExecStart=/root/PinParser/PinParser/venv/bin/python manage.py runserver 0.0.0.0:8000 
+WorkingDirectory=/root/PinParserWeb/PinParser 
+Environment="PATH=/root/PinParserWeb/PinParser/venv/bin" 
+ExecStart=/root/PinParserWeb/PinParser/venv/bin/python manage.py runserver 0.0.0.0:8000 
 
 Restart=always 
 RestartSec=5 
