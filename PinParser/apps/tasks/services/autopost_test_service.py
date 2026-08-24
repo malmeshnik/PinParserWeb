@@ -53,22 +53,22 @@ def test_autopost_config(config: AutoPostConfig) -> dict:
         logger.info(f"[AUTOPOST TEST] Використовуємо пін #{pin.id} з результатів")
 
     # Обробляємо пін
-    final_title = pin.title or ""
-    final_description = pin.description or ""
-    final_slug_url = ""
+    final_title = pin.title
+    final_description = pin.description
+    final_slug_url = pending_queue_item.config.site_url
 
     if config.use_uniqueness and config.groq_api_key and final_title:
         groq_service = GroqUniquenessService(
             api_key=config.groq_api_key,
-            prompt_template=config.groq_prompt or ""
+            prompt_template=config.groq_prompt
         )
 
         logger.info(f"[AUTOPOST TEST] Унікалізація піна #{pin.id}")
         unique_data = groq_service.uniquify(
             title=final_title,
             description=final_description,
-            alt_text=pin.alt_text or "",
-            annotation=pin.annotation or "",
+            alt_text=pin.alt_text,
+            annotation=pin.annotation,
         )
 
         if unique_data:
@@ -86,7 +86,7 @@ def test_autopost_config(config: AutoPostConfig) -> dict:
             slug_text = GroqUniquenessService.generate_slug(final_title)
             final_slug_url = f"{config.site_url}{slug_text}"
 
-    image_url = pin.image_url or ""
+    image_url = pin.image_url
 
     # Відправляємо на webhook
     payload = {

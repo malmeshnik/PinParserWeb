@@ -265,7 +265,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
         result = run_parse_task.delay(task.id)
 
         task.celery_task_id = result.id
-        task.status = TaskStatus.RUNNING
+        task.status = TaskStatus.PENDING
         task.save(update_fields=["celery_task_id", "status"])
         self.message_user(request, _("Задание %(id)s запущено 🚀") % {'id': task.id})
 

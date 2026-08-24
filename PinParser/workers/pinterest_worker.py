@@ -4,8 +4,10 @@ from urllib.parse import urlparse
 from loguru import logger
 from playwright.async_api import Error as PlaywrightError
 from django.core.cache import cache
+from django.db.models import F
 
 from workers.browser_factory import BrowserFactory
+from apps.tasks.models import ParseTask
 
 
 SCROLL_PAUSE_RANGE = (1.2, 2.5)
@@ -72,6 +74,7 @@ Org: {data.get('org')}
 
         seen: set[str] = set()
         collected_urls: list[str] = []
+        prev_count = 0
 
         async def handle_response(response):
 
@@ -133,6 +136,14 @@ Org: {data.get('org')}
                     break
 
                 await self._extract_dom(page, collected_urls, seen)
+                new_count = len(collected_urls)
+                delta = new_count - prev_count
+
+                if delta > 0:
+                    await ParseTask.objects.filter(pk=self.task.pk).aupdate(
+                        total_urls=F("total_urls") + delta
+                    )
+                    prev_count = new_count
 
                 await page.evaluate(
                     "window.scrollBy(0, Math.floor(Math.random()*1200)+800)"

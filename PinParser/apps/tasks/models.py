@@ -53,6 +53,13 @@ class ParseTask(models.Model):
     )
     name = models.CharField(max_length=255, verbose_name=_("Название задания"))
     keywords = models.JSONField(verbose_name=_("Ключевые слова"), default=list)
+    annotation_filter_words = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name=_("Фильтр по аннотации"),
+        help_text=_("Слова через запятую, если аннотация не содержит эти слова, пин будет пропущен")
+    )
 
     status = models.CharField(
         max_length=20,

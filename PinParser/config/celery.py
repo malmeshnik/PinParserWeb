@@ -8,6 +8,7 @@ app = Celery("config")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 
 app.conf.task_routes = {
+    "apps.tasks.tasks.process_autopost_queue": {"queue": "ai"},
     "apps.tasks.tasks.*": {"queue": "parser"},
     "apps.uniqueness.tasks.*": {"queue": "ai"},
     "apps.results.tasks.*": {"queue": "export"},

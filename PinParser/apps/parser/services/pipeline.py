@@ -205,6 +205,13 @@ class PinterestParsePipeline:
                     self._save_result(data)
 
     def _save_result(self, data: dict):
+        annotation = data.get("annotation")
+        annotation_filter_words = self.task.annotation_filter_words.join(",").lower().split(",") if self.task.annotation_filter_words else []
+
+        if annotation_filter_words and not any(word.strip() in (annotation or "").lower() for word in annotation_filter_words):
+            logger.info(f"[PIPELINE] Pin {data.get('pin_id')} skipped due to annotation filter")
+            return
+
         image_url = data.get("image_url")
         pin_id = data.get("pin_id")
 

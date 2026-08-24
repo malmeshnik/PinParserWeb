@@ -129,6 +129,7 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 60 * 60 
+
 GOOGLE_SERVICE_ACCOUNT_FILE = BASE_DIR / "credentials/google_service_account.json"
 
 NINE_PROXY_API_URL = env("NINE_PROXY_API_URL", default=None)
@@ -161,6 +162,7 @@ CELERY_BEAT_SCHEDULE = {
     "process-autopost-queue-every-3-minutes": {
         "task": "apps.tasks.tasks.process_autopost_queue",
         "schedule": crontab(minute='*/3'),
+        "options": {"queue": "ai"},
     },
 }
 

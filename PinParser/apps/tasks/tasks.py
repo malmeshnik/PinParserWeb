@@ -171,22 +171,22 @@ def _process_single_post(item: AutoPostQueue):
     logger.info(f"[AUTOPOST] Обробка піна #{pin.id} для завдання #{config.task.id}")
 
     # Унікалізація якщо потрібно
-    final_title = pin.title or ""
-    final_description = pin.description or ""
-    final_slug_url = ""
+    final_title = pin.title
+    final_description = pin.description
+    final_slug_url = item.config.site_url
 
     if config.use_uniqueness and config.groq_api_key and final_title:
         groq_service = GroqUniquenessService(
             api_key=config.groq_api_key,
-            prompt_template=config.groq_prompt or ""
+            prompt_template=config.groq_prompt
         )
 
         logger.info(f"[AUTOPOST] Унікалізація піна #{pin.id}")
         unique_data = groq_service.uniquify(
             title=final_title,
             description=final_description,
-            alt_text=pin.alt_text or "",
-            annotation=pin.annotation or "",
+            alt_text=pin.alt_text,
+            annotation=pin.annotation
         )
 
         if unique_data:
@@ -212,7 +212,7 @@ def _process_single_post(item: AutoPostQueue):
 
     # Формуємо URL фото - використовуємо оригінальне Pinterest посилання
     # бо Pinterest не приймає посилання без HTTPS та домену
-    image_url = pin.image_url or ""
+    image_url = pin.image_url
 
     # Відправляємо на webhook
     payload = {
@@ -228,7 +228,8 @@ def _process_single_post(item: AutoPostQueue):
     response = requests.post(
         webhook_url,
         json=payload,
-        timeout=30,
+        params={'wait': 'true', 'timeout': '60'},
+        timeout=62,
     )
 
     if response.status_code in [200, 201, 202]:

@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.utils.translation import gettext_lazy as _
 from rest_framework.routers import DefaultRouter
 from rest_framework.authtoken import views as auth_views
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
@@ -29,6 +30,10 @@ from apps.results.views import PinResultViewSet
 from apps.uniqueness.views import UniquenessConfigViewSet
 from apps.analytics.views import analytics_dashboard
 from apps.tasks.views import autopost_settings_view
+
+admin.site.site_header = "PinParser"
+admin.site.site_title = _("Управление PinParser")
+admin.site.index_title = _("Управление PinParser")
 
 router = DefaultRouter()
 router.register(r'tasks', TaskViewSet)
