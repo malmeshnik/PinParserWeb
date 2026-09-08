@@ -293,15 +293,17 @@ class AIUniquenessService:
     def _get_min_delay_between_requests(self) -> float:
         """Get minimum delay between requests based on provider and config.
 
-        DashScope has stricter rate limits, so we add a minimum delay.
+        Calculate delay to achieve target requests per minute with safety margin.
         """
         if self.config.model_provider == "dashscope":
-            # For DashScope: max 450 req/min = 7.5 req/sec
-            # Add safety margin: aim for 6 req/sec = ~0.17s between requests
-            return 0.2
+            # For DashScope with 15000 req/min limit
+            # Calculate: 60 seconds / max_requests_per_minute
+            # Add 10% safety margin
+            target_rps = self.config.max_requests_per_minute / 60
+            return (1.0 / target_rps) * 1.1
         else:
             # OpenAI is more lenient
-            return 0.05
+            return 0.01
 
     def _interruptible_sleep(self, seconds: float) -> bool:
         end_time = time.time() + seconds

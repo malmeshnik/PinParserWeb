@@ -4,7 +4,7 @@ from django.utils.translation import gettext_lazy as _
 # Create your models here.
 class ModelProvider(models.TextChoices):
     OPENAI = "openai", _("OpenAI (gpt-4o-mini)")
-    DASHSCOPE = "dashscope", _("DashScope (qwen3.7-flash)")
+    DASHSCOPE = "dashscope", _("DashScope (qwen3.7-flash) - 15000 req/min")
 
 
 class UniquenessConfig(models.Model):
@@ -61,12 +61,14 @@ class UniquenessConfig(models.Model):
 
     max_requests_per_minute = models.PositiveSmallIntegerField(
         default=450,
-        verbose_name="Максимальна кількість запитів за хвилину"
+        verbose_name="Максимальна кількість запитів за хвилину",
+        help_text=_("OpenAI: 450-500, DashScope (qwen): 10000-14000")
     )
 
     max_workers = models.PositiveSmallIntegerField(
         default=5,
-        verbose_name="Кількість потококів",
+        verbose_name="Кількість потоків",
+        help_text=_("Рекомендовано: OpenAI 5-10, DashScope 50-100")
     )
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата збереження")
