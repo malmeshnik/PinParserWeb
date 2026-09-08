@@ -191,15 +191,27 @@ class AIUniquenessService:
             self._throttle()
 
             try:
-                resp = self.client.chat.completions.create(
-                    model=self.config.model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=self.config.temperature,
-                    max_tokens=(
-                        self.config.max_tokens_title
-                        + self.config.max_tokens_description
-                    ),
+                max_tokens_value = (
+                    self.config.max_tokens_title
+                    + self.config.max_tokens_description
                 )
+
+                # GPT-5 and newer models use max_completion_tokens
+                # Older models and Qwen use max_tokens
+                if self.config.model.startswith(('gpt-5', 'gpt-4o')):
+                    resp = self.client.chat.completions.create(
+                        model=self.config.model,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=self.config.temperature,
+                        max_completion_tokens=max_tokens_value,
+                    )
+                else:
+                    resp = self.client.chat.completions.create(
+                        model=self.config.model,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=self.config.temperature,
+                        max_tokens=max_tokens_value,
+                    )
 
                 return resp.choices[0].message.content.strip()
 
