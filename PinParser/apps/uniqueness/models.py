@@ -1,19 +1,34 @@
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 # Create your models here.
+class ModelProvider(models.TextChoices):
+    OPENAI = "openai", _("OpenAI (gpt-4o-mini)")
+    DASHSCOPE = "dashscope", _("DashScope (qwen3.7-flash)")
+
+
 class UniquenessConfig(models.Model):
-    is_active = models.BooleanField(default=True, verbose_name="Активний")
+    name = models.CharField(
+        max_length=255,
+        verbose_name=_("Название конфигурации"),
+        default="Default Config",
+    )
+
+    is_active = models.BooleanField(default=True, verbose_name=_("Активен"))
+
+    model_provider = models.CharField(
+        max_length=20,
+        choices=ModelProvider.choices,
+        default=ModelProvider.OPENAI,
+        verbose_name=_("Провайдер модели"),
+    )
 
     openai_api_key = models.CharField(
         max_length=255,
-        verbose_name="OpenAI API key",
+        verbose_name=_("API ключ"),
+        help_text=_("OpenAI API ключ или DashScope API ключ (DASHSCOPE_API_KEY)"),
     )
 
-    model = models.CharField(
-        max_length=100,
-        default="gpt-4o-mini",
-        verbose_name="OpenAI model",
-    )
 
     max_tokens_title = models.PositiveSmallIntegerField(default=100, verbose_name="Максимальна кількіть токенів для title")
     max_tokens_description = models.PositiveSmallIntegerField(default=400, verbose_name="Максимальна кількіть токенів для desctription")
@@ -61,4 +76,18 @@ class UniquenessConfig(models.Model):
         verbose_name_plural = "Унікалізація"
 
     def __str__(self):
-        return f"Унікалізація #{self.id}"
+        return self.name or _("Уникализация #%(id)s") % {"id": self.id}
+
+    @property
+    def model(self):
+        """Автоматично визначає модель на основі провайдера"""
+        if self.model_provider == ModelProvider.DASHSCOPE:
+            return "qwen3.7-flash"
+        return "gpt-4o-mini"
+
+    @property
+    def base_url(self):
+        """Автоматично визначає base_url на основі провайдера"""
+        if self.model_provider == ModelProvider.DASHSCOPE:
+            return "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+        return None
