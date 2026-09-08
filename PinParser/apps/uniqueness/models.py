@@ -3,7 +3,7 @@ from django.utils.translation import gettext_lazy as _
 
 # Create your models here.
 class ModelProvider(models.TextChoices):
-    OPENAI = "openai", _("OpenAI (gpt-4o-mini)")
+    OPENAI = "openai", _("OpenAI (gpt-5-nano) - 450 req/min")
     DASHSCOPE = "dashscope", _("DashScope (qwen3.7-flash) - 15000 req/min")
 
 
@@ -85,7 +85,7 @@ class UniquenessConfig(models.Model):
         """Автоматично визначає модель на основі провайдера"""
         if self.model_provider == ModelProvider.DASHSCOPE:
             return "qwen3.7-flash"
-        return "gpt-4o-mini"
+        return "gpt-5-nano"
 
     @property
     def base_url(self):
