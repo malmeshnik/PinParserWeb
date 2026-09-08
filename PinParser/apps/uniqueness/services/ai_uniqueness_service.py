@@ -6,6 +6,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.core.cache import cache
+from django.db import connection
 from openai import OpenAI, RateLimitError, APIError, AuthenticationError
 from loguru import logger
 
@@ -52,7 +53,7 @@ class AIUniquenessService:
         )
 
         futures = {
-            executor.submit(self._process_one, pin): pin.id
+            executor.submit(self._process_one_with_cleanup, pin): pin.id
             for pin in queryset
         }
 
@@ -110,6 +111,14 @@ class AIUniquenessService:
                     f"[UNIQUENESS] {len(self.failed_pin_ids)} pins failed processing. IDs: {self.failed_pin_ids[:20]}"
                     + ("..." if len(self.failed_pin_ids) > 20 else "")
                 )
+
+    def _process_one_with_cleanup(self, pin: PinResult) -> bool:
+        """Wrapper that ensures DB connection is closed after processing."""
+        try:
+            return self._process_one(pin)
+        finally:
+            # Close database connection for this thread to prevent leak
+            connection.close()
 
     def _process_one(self, pin: PinResult) -> bool:
         """Process single pin. Returns True on success, False on failure."""
@@ -196,9 +205,9 @@ class AIUniquenessService:
                     + self.config.max_tokens_description
                 )
 
-                # GPT-5 and newer models use max_completion_tokens
+                # GPT-5, GPT-4.1, and GPT-4o models use max_completion_tokens
                 # Older models and Qwen use max_tokens
-                if self.config.model.startswith(('gpt-5', 'gpt-4o')):
+                if self.config.model.startswith(('gpt-5', 'gpt-4.1', 'gpt-4o')):
                     resp = self.client.chat.completions.create(
                         model=self.config.model,
                         messages=[{"role": "user", "content": prompt}],
@@ -294,6 +303,7 @@ class AIUniquenessService:
             if self.timestamps:
                 time_since_last = now - self.timestamps[-1]
                 min_delay = self._get_min_delay_between_requests()
+
 
                 if time_since_last < min_delay:
                     wait = min_delay - time_since_last

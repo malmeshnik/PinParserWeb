@@ -85,7 +85,7 @@ class UniquenessConfig(models.Model):
         """Автоматично визначає модель на основі провайдера"""
         if self.model_provider == ModelProvider.DASHSCOPE:
             return "qwen3.7-flash"
-        return "gpt-5-nano"
+        return "gpt-4.1-nano-2025-04-14"
 
     @property
     def base_url(self):

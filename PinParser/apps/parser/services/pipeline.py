@@ -5,6 +5,7 @@ from collections import defaultdict
 from loguru import logger
 from django.utils import timezone
 from django.db.models import F
+from django.db import connection
 from django.core.cache import cache
 from asgiref.sync import sync_to_async
 
@@ -174,19 +175,24 @@ class PinterestParsePipeline:
             for url in urls
         ]
 
-        def process(kw, url):
-            if self.task.status == TaskStatus.STOPPED:
-                return None
+        def process_with_cleanup(kw, url):
+            """Wrapper that ensures DB connection is closed after processing."""
+            try:
+                if self.task.status == TaskStatus.STOPPED:
+                    return None
 
-            html = fetcher.fetch(url)
-            if not html:
-                return None
+                html = fetcher.fetch(url)
+                if not html:
+                    return None
 
-            return self.parser.parse(html, url, kw)
+                return self.parser.parse(html, url, kw)
+            finally:
+                # Close database connection for this thread to prevent leak
+                connection.close()
 
         with ThreadPoolExecutor(max_workers=max_threads) as executor:
             futures = [
-                executor.submit(process, kw, url)
+                executor.submit(process_with_cleanup, kw, url)
                 for kw, url in all_urls
             ]
 
