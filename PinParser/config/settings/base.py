@@ -11,6 +11,10 @@ env = environ.Env(
 
 environ.Env.read_env(BASE_DIR / '.env')
 
+OMNIROUTE_BASE_URL = env('OMNIROUTE_BASE_URL', default='http://localhost:20128/v1')
+OMNIROUTE_API_KEY = env('OMNIROUTE_API_KEY', default='')
+OMNIROUTE_MODEL = env('OMNIROUTE_MODEL', default='kr/claude-sonnet-4.5')
+
 DEBUG = env('DEBUG')
 SECRET_KEY = env('SECRET_KEY')
 ALLOWED_HOSTS = ['*']

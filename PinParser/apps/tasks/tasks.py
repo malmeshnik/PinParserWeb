@@ -26,7 +26,7 @@ def run_parse_task(self, task_id: int):
 
         pipeline = PinterestParsePipeline(
             task=task,
-            headless=True,
+            headless=False,
         )
 
         parsed_count = pipeline.run()

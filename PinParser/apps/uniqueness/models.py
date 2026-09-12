@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -5,6 +7,7 @@ from django.utils.translation import gettext_lazy as _
 class ModelProvider(models.TextChoices):
     OPENAI = "openai", _("OpenAI (gpt-5-nano) - 450 req/min")
     DASHSCOPE = "dashscope", _("DashScope (qwen3.7-flash) - 15000 req/min")
+    OMNIROUTE = "omniroute", _("OmniRoute")
 
 
 class UniquenessConfig(models.Model):
@@ -24,9 +27,10 @@ class UniquenessConfig(models.Model):
     )
 
     openai_api_key = models.CharField(
+        blank=True,
         max_length=255,
         verbose_name=_("API ключ"),
-        help_text=_("OpenAI API ключ или DashScope API ключ (DASHSCOPE_API_KEY)"),
+        help_text=_("Ключ OpenAI або DashScope. Для OmniRoute залиште порожнім: ключ береться з .env."),
     )
 
 
@@ -81,8 +85,23 @@ class UniquenessConfig(models.Model):
         return self.name or _("Уникализация #%(id)s") % {"id": self.id}
 
     @property
+    def api_key(self):
+        if self.model_provider == ModelProvider.OMNIROUTE:
+            return settings.OMNIROUTE_API_KEY
+        return self.openai_api_key
+
+    def clean(self):
+        super().clean()
+        if not self.api_key:
+            raise ValidationError({
+                "openai_api_key": _("Вкажіть API ключ; для OmniRoute налаштуйте OMNIROUTE_API_KEY у .env.")
+            })
+
+    @property
     def model(self):
         """Автоматично визначає модель на основі провайдера"""
+        if self.model_provider == ModelProvider.OMNIROUTE:
+            return settings.OMNIROUTE_MODEL
         if self.model_provider == ModelProvider.DASHSCOPE:
             return "qwen3.7-flash"
         return "gpt-4.1-nano-2025-04-14"
@@ -90,6 +109,8 @@ class UniquenessConfig(models.Model):
     @property
     def base_url(self):
         """Автоматично визначає base_url на основі провайдера"""
+        if self.model_provider == ModelProvider.OMNIROUTE:
+            return settings.OMNIROUTE_BASE_URL
         if self.model_provider == ModelProvider.DASHSCOPE:
             return "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
         return None

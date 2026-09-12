@@ -21,7 +21,8 @@ class AIUniquenessService:
         self.config = config
 
         # Ініціалізуємо клієнт OpenAI з автоматичним base_url
-        client_kwargs = {"api_key": config.openai_api_key}
+        config.clean()
+        client_kwargs = {"api_key": config.api_key}
         if config.base_url:
             client_kwargs["base_url"] = config.base_url
 
