@@ -26,6 +26,14 @@ class UniquenessConfig(models.Model):
         verbose_name=_("Провайдер модели"),
     )
 
+    omniroute_model = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name=_("Модель OmniRoute"),
+        help_text=_("Лише для OmniRoute, наприклад kr/claude-sonnet-4.5. Якщо порожньо — використовується OMNIROUTE_MODEL із .env."),
+    )
+
     openai_api_key = models.CharField(
         blank=True,
         max_length=255,
@@ -101,7 +109,7 @@ class UniquenessConfig(models.Model):
     def model(self):
         """Автоматично визначає модель на основі провайдера"""
         if self.model_provider == ModelProvider.OMNIROUTE:
-            return settings.OMNIROUTE_MODEL
+            return self.omniroute_model.strip() or settings.OMNIROUTE_MODEL
         if self.model_provider == ModelProvider.DASHSCOPE:
             return "qwen3.7-flash"
         return "gpt-4.1-nano-2025-04-14"
