@@ -18,7 +18,17 @@ class AIUniquenessService:
     def __init__(self, task: ParseTask, config: UniquenessConfig):
         self.task = task
         self.config = config
-        self.client = OpenAI(api_key=config.openai_api_key)
+
+        # Ініціалізація клієнта в залежності від методу унікалізації
+        if config.uniqueness_method == 'omniroute':
+            self.client = OpenAI(
+                api_key=config.omniroute_api_key,
+                base_url=config.omniroute_base_url
+            )
+            self.model = config.omniroute_model
+        else:  # gpt
+            self.client = OpenAI(api_key=config.openai_api_key)
+            self.model = config.model
 
         self.timestamps = deque()
         self.lock = threading.Lock()
@@ -123,7 +133,7 @@ class AIUniquenessService:
 
             try:
                 resp = self.client.chat.completions.create(
-                    model=self.config.model,
+                    model=self.model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=self.config.temperature,
                     max_tokens=(

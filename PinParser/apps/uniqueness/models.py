@@ -3,17 +3,73 @@ from django.utils.translation import gettext_lazy as _
 
 # Create your models here.
 class UniquenessConfig(models.Model):
+    UNIQUENESS_METHOD_CHOICES = [
+        ('gpt', 'OpenAI GPT'),
+        ('omniroute', 'Omniroute'),
+    ]
+
     is_active = models.BooleanField(default=True, verbose_name=_("Активен"))
 
+    name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name=_("Назва конфігурації"),
+        help_text=_("Необов'язкова назва для ідентифікації конфігурації")
+    )
+
+    # Поле model_provider було додане раніше, зараз замінюємо на uniqueness_method
+    model_provider = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        verbose_name=_("Провайдер моделі (застаріле)"),
+    )
+
+    uniqueness_method = models.CharField(
+        max_length=20,
+        choices=UNIQUENESS_METHOD_CHOICES,
+        default='gpt',
+        verbose_name=_("Метод унікалізації"),
+        help_text=_("Виберіть сервіс для унікалізації контенту")
+    )
+
+    # OpenAI settings
     openai_api_key = models.CharField(
         max_length=255,
         verbose_name=_("OpenAI API ключ"),
+        blank=True,
     )
 
     model = models.CharField(
         max_length=100,
         default="gpt-4o-mini",
         verbose_name=_("OpenAI модель"),
+        blank=True,
+    )
+
+    # Omniroute settings
+    omniroute_api_key = models.CharField(
+        max_length=255,
+        verbose_name=_("Omniroute API ключ"),
+        blank=True,
+        help_text=_("API ключ для Omniroute сервісу")
+    )
+
+    omniroute_base_url = models.CharField(
+        max_length=255,
+        verbose_name=_("Omniroute Base URL"),
+        default="http://localhost:20128/v1",
+        blank=True,
+        help_text=_("Базовий URL для Omniroute API")
+    )
+
+    omniroute_model = models.CharField(
+        max_length=100,
+        default="kr/deepseek-3.2",
+        verbose_name=_("Omniroute модель"),
+        blank=True,
+        help_text=_("Модель для використання через Omniroute")
     )
 
     max_tokens_title = models.PositiveSmallIntegerField(default=100, verbose_name=_("Максимальное количество токенов для заголовка"))
