@@ -3,44 +3,6 @@
 from django.db import migrations, models
 
 
-def check_column_exists(schema_editor, table_name, column_name):
-    """Check if a column exists in the table"""
-    with schema_editor.connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name=%s AND column_name=%s
-        """, [table_name, column_name])
-        return cursor.fetchone() is not None
-
-
-def add_field_if_not_exists(apps, schema_editor):
-    """Add fields only if they don't exist"""
-    from django.db import connection
-
-    table_name = 'uniqueness_uniquenessconfig'
-
-    # Перевірка та додавання полів
-    fields_to_add = {
-        'model_provider': 'VARCHAR(50)',
-        'name': 'VARCHAR(255)',
-        'omniroute_api_key': 'VARCHAR(255)',
-        'omniroute_base_url': 'VARCHAR(255)',
-        'uniqueness_method': 'VARCHAR(20)',
-    }
-
-    with connection.cursor() as cursor:
-        for field_name, field_type in fields_to_add.items():
-            if not check_column_exists(schema_editor, table_name, field_name):
-                if field_name == 'omniroute_base_url':
-                    sql = f"ALTER TABLE {table_name} ADD COLUMN {field_name} {field_type} DEFAULT 'http://localhost:20128/v1'"
-                elif field_name == 'uniqueness_method':
-                    sql = f"ALTER TABLE {table_name} ADD COLUMN {field_name} {field_type} DEFAULT 'gpt'"
-                else:
-                    sql = f"ALTER TABLE {table_name} ADD COLUMN {field_name} {field_type}"
-                cursor.execute(sql)
-
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -48,7 +10,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(add_field_if_not_exists, migrations.RunPython.noop),
+        # Колонки omniroute додаються в 0008 (працює і на PostgreSQL, і на SQLite)
         migrations.AlterField(
             model_name='uniquenessconfig',
             name='model',

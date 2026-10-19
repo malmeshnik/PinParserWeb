@@ -1,5 +1,57 @@
 # 🚀 Руководство по деплою
 
+## 🐳 Запуск через Docker (рекомендуется)
+
+Нужен только Docker (установка — см. [раздел 4](#4-установка-docker)).
+
+```bash
+git clone https://github.com/malmeshnik/PinParser.git
+cd PinParser/PinParser
+cp .env-example .env
+nano .env        # SECRET_KEY, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
+```
+
+Запуск (все команды — из папки `PinParser/PinParser/docker`):
+
+```bash
+docker compose up -d --build
+docker compose exec web python manage.py createsuperuser
+```
+
+Админка: `http://localhost:8000/admin/` локально или `http://<сервер>:8000/admin/` на сервере.
+Миграции и `collectstatic` выполняются автоматически при старте `web`.
+Порт и количество потоков воркеров меняются прямо в `docker/docker-compose.yml`.
+
+| Сервис | Что делает |
+|---|---|
+| `web` | Django (`runserver`) на порту 8000, сам раздаёт статику и `media/` |
+| `worker-parser` | парсинг Pinterest (очередь `parser`) |
+| `worker-ai` | уникализация (очередь `ai`) |
+| `worker-export` | экспорт в Excel, очистка логов (очередь `export`) |
+| `worker-autopost` | автопостинг, 1 поток / 1 ядро (очередь `autopost`) |
+| `beat` | расписание (автопостинг каждые 3 минуты, очистка логов) |
+| `db`, `redis` | PostgreSQL и Redis — доступны только контейнерам, наружу портов нет |
+
+Микросервис публикации пинов работает на этой же машине на `localhost:80` (не в Docker). Внутри контейнера `localhost` — это сам контейнер, поэтому соединение идёт на `host.docker.internal:80` (адрес машины изнутри контейнера, работает и в Docker Desktop, и на Linux), а заголовок `Host: localhost` сохраняется — для микросервиса запрос выглядит так же, как с самой машины.
+На Linux-сервере микросервис должен слушать не только `127.0.0.1`, а `0.0.0.0` (или адрес интерфейса `docker0`), иначе из контейнеров он недоступен.
+
+Полезные команды:
+
+```bash
+# логи воркера
+docker compose logs -f worker-parser
+# обновление после git pull
+docker compose up -d --build
+# остановка
+docker compose down
+```
+
+> ⚠️ Если раньше проект работал через systemd — перед запуском Docker остановите его: `./deploy/stop_all.sh` и `sudo systemctl disable pinparser pinparser-celery-parser pinparser-celery-ai pinparser-celery-excel pinparser-celery-beat`. База данных остаётся в том же Docker-томе, файлы — в папке `media/`.
+
+---
+
+## Запуск без Docker (systemd)
+
 ## 📋 Содержание
 - [Клонирование репозитория](#1-клонирование-репозитория)
 - [Настройка Python-окружения](#2-настройка-python-окружения)
@@ -119,7 +171,8 @@ mv .env-example .env
 ## 6. Запуск базы данных
 
 ```bash
-docker compose -f ./docker/docker-compose.yml up -d
+# docker-compose держит базу внутри Docker без внешних портов — для запуска без Docker
+# установите PostgreSQL и Redis на сервер отдельно
 ```
 
 ---

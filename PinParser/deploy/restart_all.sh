@@ -17,6 +17,9 @@ echo "✅ Celery AI worker перезапущено"
 sudo systemctl restart pinparser-celery-excel.service
 echo "✅ Celery Excel worker перезапущено"
 
+sudo systemctl restart pinparser-celery-autopost.service
+echo "✅ Celery Autopost worker перезапущено"
+
 # Перезапуск Celery Beat
 sudo systemctl restart pinparser-celery-beat.service
 echo "✅ Celery Beat перезапущено"
@@ -27,6 +30,7 @@ sudo systemctl status pinparser.service --no-pager | grep "Active:"
 sudo systemctl status pinparser-celery-parser.service --no-pager | grep "Active:"
 sudo systemctl status pinparser-celery-ai.service --no-pager | grep "Active:"
 sudo systemctl status pinparser-celery-excel.service --no-pager | grep "Active:"
+sudo systemctl status pinparser-celery-autopost.service --no-pager | grep "Active:"
 sudo systemctl status pinparser-celery-beat.service --no-pager | grep "Active:"
 
 echo ""

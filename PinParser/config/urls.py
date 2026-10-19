@@ -15,20 +15,20 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
-from django.conf.urls.static import static
+from django.views.static import serve
 from django.utils.translation import gettext_lazy as _
 from rest_framework.routers import DefaultRouter
 from rest_framework.authtoken import views as auth_views
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
-from apps.tasks.views import TaskViewSet
+from apps.tasks.views import TaskViewSet, AutoPostConfigViewSet, AutoPostUniquenessConfigViewSet
 from apps.accounts.views import AccountViewSet
 from apps.proxies.views import ProxyViewSet
 from apps.results.views import PinResultViewSet
 from apps.uniqueness.views import UniquenessConfigViewSet
-from apps.analytics.views import analytics_dashboard
+from apps.analytics.views import monitoring_dashboard
 from apps.tasks.views import autopost_settings_view
 
 admin.site.site_header = "PinParser"
@@ -41,9 +41,12 @@ router.register(r'accounts', AccountViewSet)
 router.register(r'proxies', ProxyViewSet)
 router.register(r'results', PinResultViewSet)
 router.register(r'uniqueness', UniquenessConfigViewSet)
+router.register(r'autopost', AutoPostConfigViewSet)
+router.register(r'autopost-uniqueness', AutoPostUniquenessConfigViewSet)
 
 urlpatterns = [
-    path('admin/analytics/', analytics_dashboard, name='analytics_dashboard'),
+    path('admin/monitoring/', monitoring_dashboard, name='monitoring_dashboard'),
+    path('admin/analytics/', monitoring_dashboard, name='analytics_dashboard'),
     path('admin/tasks/parsetask/<int:task_id>/autopost/', autopost_settings_view, name='autopost_settings'),
     path('admin/', admin.site.urls),
     path('api/auth/token/', auth_views.obtain_auth_token, name='api_token_auth'),
@@ -53,4 +56,9 @@ urlpatterns = [
     path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
 
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Статику адмінки і media (Excel-експорти, фото пінів) віддає сам Django — окремого веб-сервера немає.
+# django.conf.urls.static.static() працює лише з DEBUG=True, тому маршрути задані явно.
+urlpatterns += [
+    re_path(r'^%s(?P<path>.*)$' % settings.STATIC_URL.lstrip('/'), serve, {'document_root': settings.STATIC_ROOT}),
+    re_path(r'^%s(?P<path>.*)$' % settings.MEDIA_URL.lstrip('/'), serve, {'document_root': settings.MEDIA_ROOT}),
+]

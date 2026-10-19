@@ -9,6 +9,7 @@ from apps.results.models import PinResult
 from apps.tasks.models import ParseTask
 
 ILLEGAL_CHARACTERS_RE = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F]")
+UNSAFE_FILENAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1F]')
 
 class ExcelWriter:
     HEADERS = [
@@ -58,7 +59,9 @@ class ExcelWriter:
         export_dir = Path(settings.MEDIA_ROOT) / "exports"
         export_dir.mkdir(parents=True, exist_ok=True)
 
-        filename = f"{task.name}.xlsx"
+        # id у назві — щоб задачі з однаковою назвою не перезаписували файли одна одної
+        safe_name = UNSAFE_FILENAME_RE.sub("_", task.name).strip() or "task"
+        filename = f"{task.id}_{safe_name}.xlsx"
         filepath = export_dir / filename
 
         wb.save(filepath)

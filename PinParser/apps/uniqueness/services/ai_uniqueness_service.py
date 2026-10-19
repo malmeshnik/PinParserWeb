@@ -3,15 +3,34 @@ import re
 import time
 import threading
 from collections import deque
+from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from django.core.cache import cache
-from openai import OpenAI, RateLimitError
+from openai import (
+    OpenAI,
+    AuthenticationError,
+    PermissionDeniedError,
+    NotFoundError,
+    BadRequestError,
+)
 from loguru import logger
 
 from apps.uniqueness.models import UniquenessConfig
 from apps.results.models import PinResult
 from apps.tasks.models import ParseTask
+from apps.tasks.services.task_control import is_stop_requested
+
+# Помилки конфігурації (ключ, доступ, модель, параметри) — повторювати запит немає сенсу
+NON_RETRYABLE_ERRORS = (AuthenticationError, PermissionDeniedError, NotFoundError, BadRequestError)
+
+
+@dataclass
+class UniquenessResult:
+    succeeded: int = 0
+    failed: int = 0
+    last_error: str | None = None
+    fatal_error: str | None = None
+    stopped: bool = False
 
 
 class AIUniquenessService:
@@ -34,10 +53,12 @@ class AIUniquenessService:
         self.lock = threading.Lock()
 
         self.stop_event = threading.Event()
+        self.fatal_error = None
 
-    def process_queryset(self, queryset):
+    def process_queryset(self, queryset) -> UniquenessResult:
+        result = UniquenessResult()
         executor = ThreadPoolExecutor(
-            max_workers=self.config.max_workers
+            max_workers=max(1, self.config.max_workers)
         )
 
         futures = {
@@ -50,52 +71,53 @@ class AIUniquenessService:
 
                 if self._should_stop():
                     logger.info("Stopping by user request")
-
-                    self.stop_event.set()
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    return  # 🔥 важливо!
+                    result.stopped = True
+                    return result
 
                 pin_id = futures[future]
 
                 try:
                     future.result()
+                    result.succeeded += 1
                 except Exception as e:
+                    result.failed += 1
+                    result.last_error = str(e)
                     logger.warning(
                         f"[UNIQUENESS] pin {pin_id} failed | {e}"
                     )
 
+                if self.fatal_error:
+                    # Невірний ключ/модель — решта запитів теж впаде, зупиняємось одразу
+                    result.fatal_error = self.fatal_error
+                    return result
+
         finally:
+            self.stop_event.set()
             executor.shutdown(wait=False, cancel_futures=True)
 
+        return result
+
     def _process_one(self, pin: PinResult):
-
         if self.stop_event.is_set():
-            return
+            raise RuntimeError("Обробку перервано")
 
-        prompt = self._build_prompt(pin)
-        content = self._call_api(prompt)
+        content = self._call_api(self._build_prompt(pin))
 
-        if self.stop_event.is_set():
-            return
-
-        if not content:
-            return
+        match = re.search(r"\{.*\}", content, re.S)
+        if not match:
+            raise ValueError("No JSON found in response")
 
         try:
-            match = re.search(r"\{.*\}", content, re.S)
-            if not match:
-                raise ValueError("No JSON found")
-
             data = json.loads(match.group())
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in response: {e}")
 
-            pin.utitle = data.get("title")
-            pin.udescription = data.get("description")
-            pin.save(update_fields=["utitle", "udescription"])
+        if not data.get("title"):
+            raise ValueError("Response has no 'title'")
 
-        except json.JSONDecodeError:
-            logger.warning(
-                f"[UNIQUENESS] Invalid JSON for pin {pin.id}"
-            )
+        pin.utitle = data["title"]
+        pin.udescription = data.get("description")
+        pin.save(update_fields=["utitle", "udescription"])
 
     def _build_prompt(self, pin: PinResult) -> str:
         ctx = {}
@@ -123,11 +145,12 @@ class AIUniquenessService:
 
     def _call_api(self, prompt: str) -> str:
         backoff = 1.0
+        last_error = None
 
         for _ in range(5):
 
             if self.stop_event.is_set():
-                return ""
+                raise RuntimeError("Обробку перервано")
 
             self._throttle()
 
@@ -142,19 +165,23 @@ class AIUniquenessService:
                     ),
                 )
 
-                return resp.choices[0].message.content.strip()
+                content = resp.choices[0].message.content
+                if not content:
+                    raise ValueError("Empty response from API")
+                return content.strip()
 
-            except RateLimitError:
+            except NON_RETRYABLE_ERRORS as e:
+                self.fatal_error = str(e)
+                self.stop_event.set()
+                raise
+
+            except Exception as e:
+                last_error = e
                 if not self._interruptible_sleep(backoff):
-                    return ""
+                    break
                 backoff *= 2
 
-            except Exception:
-                if not self._interruptible_sleep(backoff):
-                    return ""
-                backoff *= 2
-
-        return ""
+        raise RuntimeError(f"API request failed after retries: {last_error}")
 
     def _throttle(self):
         with self.lock:
@@ -181,7 +208,7 @@ class AIUniquenessService:
         return True
 
     def _should_stop(self) -> bool:
-        if cache.get(f"stop_task_{self.task.id}") is True:
+        if is_stop_requested(self.task.id):
             self.stop_event.set()
             return True
         return False

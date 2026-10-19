@@ -6,14 +6,19 @@ import random
 from typing import Optional, Dict
 from loguru import logger
 
+from apps.tasks.models import AutoPostUniquenessConfig
 
-class GroqUniquenessService:
-    """Сервіс для унікалізації контенту через Groq API"""
 
-    def __init__(self, api_key: str, prompt_template: str):
-        self.api_key = api_key
-        self.prompt_template = prompt_template
+class AutoPostUniquenessService:
+    """Сервіс для унікалізації контенту через Groq API (ключ, модель і промпт — з адмінки)"""
+
+    def __init__(self, config: AutoPostUniquenessConfig):
+        self.api_key = config.api_key
+        self.prompt_template = config.prompt
+        self.model = config.model
         self.api_url = "https://api.groq.com/openai/v1/chat/completions"
+        # Текст останньої помилки — для перевірки конфігу з адмінки
+        self.last_error = None
 
     def uniquify(
         self,
@@ -36,8 +41,11 @@ class GroqUniquenessService:
         Returns:
             Dict з ключами 'title' та 'description' або None якщо всі спроби невдалі
         """
+        self.last_error = None
+
         if not self.api_key or not self.api_key.strip():
             logger.error("[GROQ] API ключ не вказано")
+            self.last_error = "API ключ не вказано"
             return None
 
         final_prompt = self.prompt_template.replace("{{title}}", title or "")
@@ -47,7 +55,7 @@ class GroqUniquenessService:
         final_prompt += "\n\nOutput must be a valid JSON object."
 
         payload = {
-            "model": "qwen/qwen3.6-27b",
+            "model": self.model,
             "messages": [
                 {
                     "role": "user",
@@ -81,6 +89,7 @@ class GroqUniquenessService:
                         f"[GROQ] Rate limit (спроба {attempt}/{max_retries}), пропускаємо без очікування"
                     )
                     last_error = f"429: {response.text}"
+                    self.last_error = last_error
                     return None
 
                 # Серверні помилки — короткий backoff (макс ~2с), не десятки хвилин
@@ -99,6 +108,7 @@ class GroqUniquenessService:
                     logger.error(
                         f"[GROQ] Помилка API: {response.status_code} | {response.text}"
                     )
+                    self.last_error = f"{response.status_code}: {response.text[:500]}"
                     return None
 
                 # Статус 200 — парсимо відповідь
@@ -155,6 +165,7 @@ class GroqUniquenessService:
                 continue
 
         logger.error(f"[GROQ] Всі {max_retries} спроб вичерпано. Остання помилка: {last_error}")
+        self.last_error = last_error
         return None
 
     @staticmethod

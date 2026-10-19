@@ -1,50 +1,314 @@
 {% extends "admin/base_site.html" %}
+{% load tz %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .mon { --ok: #198754; --bad: #dc3545; --warn: #b7791f; --muted: var(--body-quiet-color, #666);
+         --card: var(--body-bg, #fff); --line: var(--hairline-color, #e5e5e5); --soft: var(--darkened-bg, #f6f6f6); }
+  .mon h2 { margin: 28px 0 10px; font-size: 16px; }
+  .mon .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .mon .muted { color: var(--muted); font-size: 12px; }
+  .mon .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .mon .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .mon .card h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; background: none; color: var(--body-fg); padding: 0; text-transform: none; }
+  .mon .big { font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .mon .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .mon .ok { color: var(--ok); } .mon .bad { color: var(--bad); } .mon .warn { color: var(--warn); }
+  .mon .bg-ok { background: var(--ok); } .mon .bg-bad { background: var(--bad); } .mon .bg-warn { background: var(--warn); }
+  .mon .card.alert { border-color: var(--bad); box-shadow: inset 3px 0 0 var(--bad); }
+  .mon .card.warning { border-color: var(--warn); box-shadow: inset 3px 0 0 var(--warn); }
+  .mon table { width: 100%; border-collapse: collapse; background: var(--card); }
+  .mon th, .mon td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 12px; }
+  .mon th { background: var(--soft); font-weight: 600; }
+  .mon .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mon .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; color: #fff; }
+  .mon .chart { display: flex; align-items: flex-end; gap: 3px; height: 110px; padding: 8px 0 0; border-bottom: 1px solid var(--line); }
+  .mon .chart .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; }
+  .mon .chart .fill { width: 100%; background: var(--bad); border-radius: 3px 3px 0 0; min-height: 1px; opacity: .85; }
+  .mon .chart .fill.zero { background: var(--line); }
+  .mon .chart .val { font-size: 10px; color: var(--muted); }
+  .mon .axis { display: flex; gap: 3px; } .mon .axis span { flex: 1; text-align: center; font-size: 10px; color: var(--muted); }
+  .mon .progress { height: 6px; background: var(--soft); border-radius: 3px; overflow: hidden; min-width: 80px; }
+  .mon .progress > div { height: 100%; background: var(--ok); }
+  .mon .msg { max-width: 560px; word-break: break-word; }
+  .mon .two { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+  .mon .scroll { overflow-x: auto; }
+</style>
+{% endblock %}
 
 {% block content %}
-<div id="content-main">
-    <h1>Панель аналітики</h1>
+<div class="mon" id="content-main">
 
-    <div style="display: flex; gap: 20px; margin-bottom: 30px;">
-        <div style="padding: 20px; border: 1px solid #ccc; border-radius: 5px; flex: 1;">
-            <h3>Всього завдань</h3>
-            <p style="font-size: 24px;">{{ total_tasks }}</p>
-        </div>
-        <div style="padding: 20px; border: 1px solid #ccc; border-radius: 5px; flex: 1; background-color: #d4edda;">
-            <h3>Успішно виконано</h3>
-            <p style="font-size: 24px;">{{ successful_tasks }}</p>
-        </div>
-        <div style="padding: 20px; border: 1px solid #ccc; border-radius: 5px; flex: 1; background-color: #f8d7da;">
-            <h3>Помилок</h3>
-            <p style="font-size: 24px;">{{ failed_tasks }}</p>
-        </div>
-        <div style="padding: 20px; border: 1px solid #ccc; border-radius: 5px; flex: 1;">
-            <h3>Всього зібрано пінів</h3>
-            <p style="font-size: 24px;">{{ total_pins }}</p>
-        </div>
+  <div class="bar">
+    <div>
+      <a class="button" href="{% url 'admin:logs_errorlog_changelist' %}?is_resolved__exact=0">🧾 Все ошибки</a>
+      <a class="button" href="{% url 'admin:tasks_parsetask_changelist' %}">📋 Задания</a>
+      <a class="button" href="{% url 'admin:tasks_autopostconfig_changelist' %}">📤 Автопостинг</a>
     </div>
+    <div class="muted">
+      Обновлено {{ generated_at|localtime|date:"d.m.Y H:i:s" }} ·
+      <label><input type="checkbox" id="autorefresh"> автообновление каждые 30 с</label>
+    </div>
+  </div>
 
-    <h2>Останні помилки</h2>
-    <table style="width: 100%; border-collapse: collapse;">
-        <thead>
-            <tr style="background: #eee;">
-                <th style="padding: 10px; border: 1px solid #ddd;">Дата</th>
-                <th style="padding: 10px; border: 1px solid #ddd;">Завдання</th>
-                <th style="padding: 10px; border: 1px solid #ddd;">Повідомлення</th>
-            </tr>
-        </thead>
+  {# ---------------- Сервіси ---------------- #}
+  <h2>Сервисы</h2>
+  <div class="grid">
+    <div class="card {% if not services.db.ok %}alert{% endif %}">
+      <h3><span class="dot {% if services.db.ok %}bg-ok{% else %}bg-bad{% endif %}"></span>База данных</h3>
+      {% if services.db.ok %}<div class="ok">Работает · {{ services.db.ms }} мс</div>
+      {% else %}<div class="bad">Недоступна</div><div class="muted">{{ services.db.error }}</div>{% endif %}
+    </div>
+    <div class="card {% if not services.redis.ok %}alert{% endif %}">
+      <h3><span class="dot {% if services.redis.ok %}bg-ok{% else %}bg-bad{% endif %}"></span>Redis</h3>
+      {% if services.redis.ok %}<div class="ok">Работает · {{ services.redis.ms }} мс</div>
+      {% else %}<div class="bad">Недоступен</div><div class="muted">{{ services.redis.error }}</div>{% endif %}
+    </div>
+    {% for item in beat %}
+    <div class="card {% if not item.ok %}warning{% endif %}">
+      <h3><span class="dot {% if item.ok %}bg-ok{% else %}bg-warn{% endif %}"></span>Beat: {{ item.title }}</h3>
+      {% if item.last_at %}
+        <div class="{% if item.ok %}ok{% else %}warn{% endif %}">Последний запуск {{ item.last_at|timesince }} назад</div>
+        <div class="muted">{{ item.last_at|localtime|date:"d.m H:i:s" }} · {{ item.state|default:"" }}</div>
+      {% else %}
+        <div class="warn">Ещё не запускалась</div>
+        <div class="muted">Если не появится в течение пары минут — проверьте beat</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if services.disk %}
+    <div class="card {% if services.disk.used_percent >= 90 %}alert{% elif services.disk.used_percent >= 80 %}warning{% endif %}">
+      <h3>💾 Диск</h3>
+      <div>Свободно {{ services.disk.free_gb }} из {{ services.disk.total_gb }} ГБ</div>
+      <div class="progress" style="margin-top:6px"><div style="width:{{ services.disk.used_percent }}%;{% if services.disk.used_percent >= 90 %}background:var(--bad){% endif %}"></div></div>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ---------------- Воркери ---------------- #}
+  <h2>Celery-воркеры и очереди</h2>
+  {% if celery.error %}<p class="bad">Не удалось опросить воркеры: {{ celery.error }}</p>{% endif %}
+  <div class="grid">
+    {% for w in celery.workers %}
+    <div class="card {% if not w.online %}alert{% endif %}">
+      <h3><span class="dot {% if w.online %}bg-ok{% else %}bg-bad{% endif %}"></span>{{ w.title }}</h3>
+      {% if w.online %}
+        <div class="muted">{{ w.node }} · потоков {{ w.concurrency|default:"?" }} · аптайм {{ w.uptime_h }} ч</div>
+        <div class="muted">Очереди: {{ w.queues|join:", "|default:"—" }} · выполнено {{ w.processed }}</div>
+        {% if w.active %}
+          <div style="margin-top:6px"><b>Сейчас:</b>
+            {% for t in w.active %}<div>▶ {{ t.name }} {{ t.args }}</div>{% endfor %}
+          </div>
+        {% else %}
+          <div class="muted" style="margin-top:6px">Свободен</div>
+        {% endif %}
+      {% else %}
+        <div class="bad">Не отвечает</div>
+        <div class="muted">Задачи этой очереди не выполняются</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% if celery.queues %}
+  <p class="muted" style="margin-top:8px">
+    В очереди ожидают:
+    {% for name, length in celery.queues.items %}<b class="{% if length > 20 %}warn{% endif %}">{{ name }}: {{ length }}</b>{% if not forloop.last %} · {% endif %}{% endfor %}
+  </p>
+  {% elif celery.queue_error %}
+  <p class="muted">Длины очередей недоступны: {{ celery.queue_error }}</p>
+  {% endif %}
+
+  {# ---------------- Помилки ---------------- #}
+  <h2>Ошибки</h2>
+  <div class="grid">
+    <div class="card {% if errors.totals.hour %}alert{% endif %}"><h3>За последний час</h3><div class="big {% if errors.totals.hour %}bad{% endif %}">{{ errors.totals.hour }}</div></div>
+    <div class="card"><h3>За 24 часа</h3><div class="big">{{ errors.totals.day }}</div><div class="muted">+ {{ errors.totals.warnings_day }} предупреждений</div></div>
+    <div class="card"><h3>За 7 дней</h3><div class="big">{{ errors.totals.week }}</div></div>
+    <div class="card {% if errors.totals.unresolved %}warning{% endif %}">
+      <h3>Нерешённые</h3><div class="big">{{ errors.totals.unresolved }}</div>
+      <a class="muted" href="{% url 'admin:logs_errorlog_changelist' %}?is_resolved__exact=0&level__exact=ERROR">открыть список →</a>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h3>Ошибки по часам (24 ч)</h3>
+    <div class="chart">
+      {% for h in errors.hours %}
+      <div class="col" title="{{ h.hour|date:'d.m H:00' }} — {{ h.count }}">
+        {% if h.count %}<span class="val">{{ h.count }}</span>{% endif %}
+        <div class="fill {% if not h.count %}zero{% endif %}" style="height:{{ h.height }}%"></div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="axis">{% for h in errors.hours %}<span>{% if forloop.counter0|divisibleby:3 %}{{ h.hour|date:"H" }}{% endif %}</span>{% endfor %}</div>
+  </div>
+
+  <div class="two" style="margin-top:12px">
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Источник (24 ч)</th><th class="num">Ошибки</th><th class="num">Предупр.</th><th>Последняя</th></tr></thead>
         <tbody>
-            {% for error in recent_errors %}
-            <tr>
-                <td style="padding: 10px; border: 1px solid #ddd;">{{ error.created_at }}</td>
-                <td style="padding: 10px; border: 1px solid #ddd;">{{ error.task.name }}</td>
-                <td style="padding: 10px; border: 1px solid #ddd;">{{ error.message }}</td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="3" style="padding: 10px; border: 1px solid #ddd; text-align: center;">Помилок не знайдено</td>
-            </tr>
-            {% endfor %}
+        {% for s in errors.by_source %}
+          <tr>
+            <td><a href="{% url 'admin:logs_errorlog_changelist' %}?source__exact={{ s.value }}">{{ s.label }}</a></td>
+            <td class="num {% if s.errors %}bad{% endif %}">{{ s.errors }}</td>
+            <td class="num {% if s.warnings %}warn{% endif %}">{{ s.warnings }}</td>
+            <td class="muted">{% if s.last %}{{ s.last|timesince }} назад{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
         </tbody>
-    </table>
+      </table>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Частые ошибки (7 дней)</th><th class="num">Раз</th><th>Последняя</th></tr></thead>
+        <tbody>
+        {% for t in errors.top %}
+          <tr>
+            <td class="msg"><span class="muted">{{ t.source_label }} ·</span>
+              <a href="{% url 'admin:logs_errorlog_changelist' %}?fingerprint={{ t.fingerprint }}">{{ t.message|default:"(без текста)" }}</a></td>
+            <td class="num"><b>{{ t.count }}</b></td>
+            <td class="muted">{{ t.last|timesince }} назад</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="3" class="muted">Ошибок за неделю нет 🎉</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <h3 style="margin:16px 0 6px">Последние записи</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Время</th><th>Уровень</th><th>Источник</th><th>Сообщение</th><th>Задание</th><th>Где</th></tr></thead>
+    <tbody>
+    {% for e in errors.recent %}
+      <tr>
+        <td class="muted" style="white-space:nowrap">{{ e.created_at|localtime|date:"d.m H:i:s" }}</td>
+        <td><span class="pill {% if e.level == 'WARNING' %}bg-warn{% else %}bg-bad{% endif %}">{{ e.level }}</span></td>
+        <td>{{ e.get_source_display }}</td>
+        <td class="msg"><a href="{% url 'admin:logs_errorlog_change' e.id %}">{{ e.message|truncatechars:180 }}</a>{% if e.traceback %} <span class="muted">· traceback</span>{% endif %}</td>
+        <td>{% if e.task_id %}<a href="{% url 'admin:tasks_parsetask_change' e.task_id %}">#{{ e.task_id }}</a>{% else %}—{% endif %}</td>
+        <td class="muted">{{ e.logger_name|truncatechars:50 }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="muted">Записей нет</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {# ---------------- Завдання ---------------- #}
+  <h2>Задания парсинга</h2>
+  <div class="grid">
+    {% for s in tasks.statuses %}
+    <div class="card"><h3>{{ s.label }}</h3><div class="big {% if s.value == 'error' and s.count %}bad{% elif s.value == 'done' %}ok{% endif %}">{{ s.count }}</div></div>
+    {% endfor %}
+    <div class="card"><h3>За 24 часа</h3><div><span class="ok">✔ {{ tasks.done_24h }}</span> · <span class="{% if tasks.error_24h %}bad{% endif %}">✖ {{ tasks.error_24h }}</span></div></div>
+  </div>
+
+  <div class="two" style="margin-top:12px">
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Активные задания</th><th>Статус</th><th>Прогресс</th><th>Начато</th></tr></thead>
+        <tbody>
+        {% for t in tasks.active %}
+          <tr>
+            <td><a href="{% url 'admin:tasks_parsetask_change' t.id %}">#{{ t.id }} {{ t.name }}</a>
+              {% if t.is_stuck %}<div class="bad">⚠ дольше лимита (3 ч) — возможно, зависло</div>{% endif %}</td>
+            <td>{{ t.get_status_display }}</td>
+            <td>{{ t.processed_urls }}/{{ t.total_urls }}<div class="progress"><div style="width:{{ t.progress }}%"></div></div></td>
+            <td class="muted">{% if t.started_at %}{{ t.started_at|timesince }} назад{% else %}в очереди{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="muted">Сейчас ничего не выполняется</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Упавшие задания (7 дней)</th><th>Ошибка</th><th>Когда</th></tr></thead>
+        <tbody>
+        {% for t in tasks.failed %}
+          <tr>
+            <td><a href="{% url 'admin:tasks_parsetask_change' t.id %}">#{{ t.id }} {{ t.name }}</a>
+              <div><a class="muted" href="{% url 'admin:logs_errorlog_changelist' %}?task__id__exact={{ t.id }}">логи задания →</a></div></td>
+            <td class="msg bad">{{ t.error_message|truncatechars:200 }}</td>
+            <td class="muted">{{ t.finished_at|timesince }} назад</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="3" class="muted">Нет</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ---------------- Автопостинг ---------------- #}
+  <h2>Автопостинг</h2>
+  <div class="grid">
+    <div class="card"><h3>Опубликовано за 24 ч</h3><div class="big ok">{{ autopost.posted_24h }}</div></div>
+    <div class="card {% if autopost.failed_24h %}warning{% endif %}"><h3>Ошибок публикации за 24 ч</h3><div class="big {% if autopost.failed_24h %}bad{% endif %}">{{ autopost.failed_24h }}</div></div>
+    <div class="card"><h3>Ожидают публикации</h3><div class="big">{{ autopost.pending }}</div></div>
+    {% for s in autopost.statuses %}{% if s.count %}
+    <div class="card"><h3>{{ s.label }}</h3><div class="big {% if s.value == 'error' %}bad{% endif %}">{{ s.count }}</div></div>
+    {% endif %}{% endfor %}
+  </div>
+
+  <div class="two" style="margin-top:12px">
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Запущенный автопостинг</th><th>Прогресс</th><th>Следующий пост</th><th>Модель</th></tr></thead>
+        <tbody>
+        {% for c in autopost.running %}
+          <tr>
+            <td><a href="{% url 'admin:tasks_autopostconfig_change' c.id %}">{{ c.task.name }}</a><div class="muted">{{ c.board_name }}</div></td>
+            <td>{{ c.posted_count }}/{{ c.total_count }}</td>
+            <td>{% if c.next_at %}{{ c.next_at|localtime|date:"d.m H:i" }}
+                {% if c.overdue %}<div class="bad">⚠ просрочен — проверьте воркер автопостинга</div>{% endif %}
+                {% else %}—{% endif %}</td>
+            <td class="muted">{% if c.use_uniqueness and c.uniqueness_config %}{{ c.uniqueness_config.model }}{% else %}без уникализации{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="muted">Нет запущенного автопостинга</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Автопостинг с ошибкой</th><th>Ошибка</th></tr></thead>
+        <tbody>
+        {% for c in autopost.errors %}
+          <tr>
+            <td><a href="{% url 'admin:tasks_autopostconfig_change' c.id %}">{{ c.task.name }}</a></td>
+            <td class="msg bad">{{ c.error_message|truncatechars:200 }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="2" class="muted">Нет</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
+
+<script>
+(function () {
+  var box = document.getElementById('autorefresh'), timer = null, key = 'monitoringAutoRefresh';
+  function apply() {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (box.checked) timer = setTimeout(function () { location.reload(); }, 30000);
+  }
+  try { box.checked = localStorage.getItem(key) !== '0'; } catch (e) { box.checked = true; }
+  box.addEventListener('change', function () {
+    try { localStorage.setItem(key, box.checked ? '1' : '0'); } catch (e) {}
+    apply();
+  });
+  apply();
+})();
+</script>
 {% endblock %}

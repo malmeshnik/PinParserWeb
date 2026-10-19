@@ -1,23 +1,23 @@
 #!/bin/bash
+# Встановлення systemd-сервісів PinParser (запуск без Docker)
 
-PROJECT_NAME=pinparser
+SERVICES="pinparser pinparser-celery-parser pinparser-celery-ai pinparser-celery-excel pinparser-celery-autopost pinparser-celery-beat"
 
-echo "🔧 Installing systemd service..."
+echo "🔧 Installing systemd services..."
 
-sudo cp deploy/pinparser.service /etc/systemd/system/${PROJECT_NAME}.service
-sudo cp deploy/pinparser-celery.service /etc/systemd/system/
-sudo cp deploy/pinparser-celery-beat.service /etc/systemd/system/
+for service in $SERVICES; do
+    sudo cp deploy/${service}.service /etc/systemd/system/
+done
 
 sudo systemctl daemon-reload
 
-sudo systemctl enable ${PROJECT_NAME}
-sudo systemctl enable pinparser-celery
-sudo systemctl enable pinparser-celery-beat
-
-sudo systemctl restart ${PROJECT_NAME}
-sudo systemctl restart pinparser-celery
-sudo systemctl restart pinparser-celery-beat
+for service in $SERVICES; do
+    sudo systemctl enable ${service}
+    sudo systemctl restart ${service}
+done
 
 echo "✅ Services started!"
 
-sudo systemctl status ${PROJECT_NAME}
+for service in $SERVICES; do
+    sudo systemctl status ${service} --no-pager | grep "Active:"
+done

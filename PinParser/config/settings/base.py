@@ -133,6 +133,12 @@ CELERY_TASK_TIME_LIMIT = 60 * 60
 GOOGLE_SERVICE_ACCOUNT_FILE = BASE_DIR / "credentials/google_service_account.json"
 
 NINE_PROXY_API_URL = env("NINE_PROXY_API_URL", default=None)
+
+# Мікросервіс публікації пінів (автопостинг) на цій же машині
+AUTOPOST_API_URL = env("AUTOPOST_API_URL", default="http://localhost:80")
+# Заголовок Host для мікросервісу. У Docker з'єднання йде на host.docker.internal, а мікросервіс
+# приймає лише Host: localhost (ALLOWED_HOSTS), тому підставляємо його явно
+AUTOPOST_API_HOST = env("AUTOPOST_API_HOST", default=None)
 NINE_PROXY_HOST = env("NINE_PROXY_HOST", default=None)
 
 REST_FRAMEWORK = {
@@ -162,13 +168,12 @@ CELERY_BEAT_SCHEDULE = {
     "process-autopost-queue-every-3-minutes": {
         "task": "apps.tasks.tasks.process_autopost_queue",
         "schedule": crontab(minute='*/3'),
-        "options": {"queue": "ai"},
     },
 }
 
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
+        "LOCATION": env("REDIS_CACHE_URL", default="redis://127.0.0.1:6379/1"),
     }
 }

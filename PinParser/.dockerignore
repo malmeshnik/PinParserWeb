@@ -1,0 +1,10 @@
+.env
+.git
+.claude
+venv
+media
+staticfiles
+db.sqlite3
+celerybeat-schedule
+**/__pycache__
+*.log

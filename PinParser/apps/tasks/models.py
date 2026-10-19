@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -8,7 +9,7 @@ from django.conf import settings
 class TaskStatus(models.TextChoices):
     PENDING = "pending", _("Ожидает")
     RUNNING = "running", _("В процессе")
-    WAITING_UNIQUENESS = 'waiting_uniqueness', _("Ожидает уникализации"),
+    WAITING_UNIQUENESS = "waiting_uniqueness", _("Ожидает уникализации")
     UNIQUENESS = "uniqueness", _("Уникализация")
     DONE = "done", _("Выполнено")
     ERROR = "error", _("Ошибка")
@@ -147,12 +148,16 @@ class ParseTask(models.Model):
     def mark_running(self, celery_task_id: str):
         self.status = TaskStatus.RUNNING
         self.celery_task_id = celery_task_id
-        self.processed_urls = 0
+        # При перезапуску вже збережені піни не створюються повторно,
+        # тому лічильник стартує з їх фактичної кількості
+        self.processed_urls = self.results.count()
         self.total_urls = 0
         self.error_message = ''
         self.started_at = timezone.now()
+        self.finished_at = None
         self.save(update_fields=[
-            "status", "celery_task_id", "started_at", "error_message", "total_urls"
+            "status", "celery_task_id", "started_at", "finished_at",
+            "error_message", "processed_urls", "total_urls",
         ])
 
     def mark_success(self):
@@ -160,7 +165,7 @@ class ParseTask(models.Model):
         self.finished_at = timezone.now()
         self.celery_task_id = None
         self.save(update_fields=[
-            "status", "total_urls", "finished_at", "celery_task_id"
+            "status", "finished_at", "celery_task_id"
         ])
 
     def mark_failed(self, error: str):
@@ -172,17 +177,67 @@ class ParseTask(models.Model):
             "status", "error_message", "finished_at", "celery_task_id"
         ])
 
-    def update_progress(self, processed: int, total: int | None = None):
-        self.processed_urls = processed
-        if total is not None:
-            self.total_urls = total
-        self.save(update_fields=[
-            "processed_urls", "total_urls"
-        ])
+    def add_note(self, message: str):
+        """Записує некритичну помилку (частина пінів не оброблена), не змінюючи статус."""
+        from loguru import logger
+        logger.bind(db=True, task_id=self.id).warning(message)
+
+        note = f"{self.error_message}\n{message}" if self.error_message else message
+        self.error_message = note[:5000]
+        self.save(update_fields=["error_message"])
 
     def mark_wait_uniqueness(self):
         self.status = TaskStatus.WAITING_UNIQUENESS
         self.save(update_fields=['status'])
+
+
+DEFAULT_AUTOPOST_PROMPT = (
+    "Uniquify the following Pinterest pin content. Return ONLY a JSON object with 'title' and 'description' keys.\n\n"
+    "Original Title: {{title}}\n"
+    "Original Description: {{description}}\n"
+    "Alt Text: {{alt_text}}\n"
+    "Annotation: {{annotation}}\n\n"
+    "CRITICAL RULES:\n"
+    "1. Rewrite title and description to make them 100% unique, engaging, and clicking.\n"
+    "2. Keep the EXACT SAME LANGUAGE as the input text (e.g. if input is Ukrainian, output Ukrainian).\n"
+    "3. Return ONLY valid JSON, do not include markdown blocks like ```json, no explanations."
+)
+
+
+class AutoPostUniquenessConfig(models.Model):
+    """Настройки уникализации пинов через Groq перед автопостингом."""
+
+    name = models.CharField(max_length=255, verbose_name=_("Название"))
+    is_active = models.BooleanField(default=True, verbose_name=_("Активен"))
+
+    api_key = models.CharField(max_length=255, verbose_name=_("Groq API ключ"))
+    model = models.CharField(
+        max_length=100,
+        default="qwen/qwen3.6-27b",
+        verbose_name=_("Модель"),
+    )
+
+    prompt = models.TextField(
+        default=DEFAULT_AUTOPOST_PROMPT,
+        verbose_name=_("Промпт"),
+        help_text=_("Доступные переменные: {{title}}, {{description}}, {{alt_text}}, {{annotation}}"),
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("Дата создания"))
+    updated_at = models.DateTimeField(auto_now=True, verbose_name=_("Дата обновления"))
+
+    class Meta:
+        verbose_name = _("Уникализация автопостинга")
+        verbose_name_plural = _("Уникализация автопостинга")
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.name} ({self.model})"
+
+
+def get_default_autopost_uniqueness_config():
+    config = AutoPostUniquenessConfig.objects.filter(is_active=True).order_by("id").first()
+    return config.id if config else None
 
 
 class AutoPostConfig(models.Model):
@@ -229,30 +284,15 @@ class AutoPostConfig(models.Model):
         verbose_name=_("Уникализировать перед постингом"),
     )
 
-    groq_api_key = models.CharField(
-        max_length=255,
-        blank=True,
+    uniqueness_config = models.ForeignKey(
+        "AutoPostUniquenessConfig",
+        on_delete=models.SET_NULL,
+        related_name="autopost_configs",
         null=True,
-        verbose_name=_("Groq API ключ"),
-        help_text=_("Ключ для уникализации через Groq"),
-    )
-
-    groq_prompt = models.TextField(
         blank=True,
-        null=True,
-        verbose_name=_("Промпт для уникализации"),
-        help_text=_("Кастомный промпт для Groq API"),
-        default=(
-            "Uniquify the following Pinterest pin content. Return ONLY a JSON object with 'title' and 'description' keys.\n\n"
-            "Original Title: {{title}}\n"
-            "Original Description: {{description}}\n"
-            "Alt Text: {{alt_text}}\n"
-            "Annotation: {{annotation}}\n\n"
-            "CRITICAL RULES:\n"
-            "1. Rewrite title and description to make them 100% unique, engaging, and clicking.\n"
-            "2. Keep the EXACT SAME LANGUAGE as the input text (e.g. if input is Ukrainian, output Ukrainian).\n"
-            "3. Return ONLY valid JSON, do not include markdown blocks like ```json, no explanations."
-        ),
+        default=get_default_autopost_uniqueness_config,
+        verbose_name=_("Конфиг уникализации"),
+        help_text=_("Модель, ключ и промпт настраиваются в разделе «Уникализация автопостинга»"),
     )
 
     status = models.CharField(
@@ -306,6 +346,12 @@ class AutoPostConfig(models.Model):
         auto_now=True,
         verbose_name=_("Дата обновления"),
     )
+
+    def clean(self):
+        if self.min_interval > self.max_interval:
+            raise ValidationError({
+                "max_interval": _("Максимальный интервал должен быть не меньше минимального"),
+            })
 
     class Meta:
         verbose_name = _("Настройка автопостинга")

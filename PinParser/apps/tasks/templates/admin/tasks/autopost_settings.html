@@ -492,24 +492,16 @@
                 </div>
 
                 <div class="form-field">
-                    <label for="{{ form.groq_api_key.id_for_label }}">{{ form.groq_api_key.label }}</label>
-                    {{ form.groq_api_key }}
-                    {% if form.groq_api_key.help_text %}
-                    <p class="help">{{ form.groq_api_key.help_text }}</p>
+                    <label for="{{ form.uniqueness_config.id_for_label }}">{{ form.uniqueness_config.label }}</label>
+                    {{ form.uniqueness_config }}
+                    {% if request.user.is_superuser %}
+                    <a href="{% url 'admin:tasks_autopostuniquenessconfig_changelist' %}">⚙️ Настроить модели и ключи</a>
                     {% endif %}
-                    {% if form.groq_api_key.errors %}
-                    <p class="errornote">{{ form.groq_api_key.errors }}</p>
+                    {% if form.uniqueness_config.help_text %}
+                    <p class="help">{{ form.uniqueness_config.help_text }}</p>
                     {% endif %}
-                </div>
-
-                <div class="form-field">
-                    <label for="{{ form.groq_prompt.id_for_label }}">{{ form.groq_prompt.label }}</label>
-                    {{ form.groq_prompt }}
-                    {% if form.groq_prompt.help_text %}
-                    <p class="help">{{ form.groq_prompt.help_text }}</p>
-                    {% endif %}
-                    {% if form.groq_prompt.errors %}
-                    <p class="errornote">{{ form.groq_prompt.errors }}</p>
+                    {% if form.uniqueness_config.errors %}
+                    <p class="errornote">{{ form.uniqueness_config.errors }}</p>
                     {% endif %}
                 </div>
             </div>

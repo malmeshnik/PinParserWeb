@@ -2,21 +2,25 @@ import zipfile
 import os
 from io import BytesIO
 
-from django.core.cache import cache
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME, ActionForm
+from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.html import format_html
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.http import HttpResponse
 from django import forms
-from celery.result import AsyncResult
-from .models import ParseTask, TaskStatus, AutoPostConfig, AutoPostStatus, AutoPostQueue, PostQueueStatus
-from .tasks import run_parse_task
-from .errors import TaskAlreadyRunning
+from .models import (
+    ParseTask, TaskStatus, AutoPostConfig, AutoPostStatus, AutoPostQueue, PostQueueStatus,
+    AutoPostUniquenessConfig,
+)
+from .services.task_control import start_parse_task, stop_parse_task
+from .services.autopost_service import reschedule_pending, start_autopost, stop_autopost, AutoPostError
+from .services.autopost_test_service import test_autopost_config
+from .services.autopost_uniqueness_service import AutoPostUniquenessService
 from apps.results.tasks import export_results_to_excel
 from apps.uniqueness.tasks import run_uniqueness, generate_slugs
-from config.celery import app
 from apps.accounts.models import PinterestAccount, AccountStatus
 from apps.proxies.models import Proxy, ProxyStatus
 
@@ -69,7 +73,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (_("Основное"), {
-            "fields": ("name", "keywords_text", "threads")
+            "fields": ("name", "keywords_text", "annotation_filter_words", "threads")
         }),
         (_("Опции"), {
             "fields": ("use_uniqueness", "uniqueness_config")
@@ -91,6 +95,8 @@ class ParseTaskAdmin(admin.ModelAdmin):
         colors = {
             TaskStatus.PENDING: "#999",
             TaskStatus.RUNNING: "#0d6efd",
+            TaskStatus.WAITING_UNIQUENESS: "#6f42c1",
+            TaskStatus.UNIQUENESS: "#6f42c1",
             TaskStatus.DONE: "#198754",
             TaskStatus.ERROR: "#dc3545",
             TaskStatus.STOPPED: "#ffc107",
@@ -116,7 +122,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         qs = qs.select_related('owner', 'uniqueness_config')
-        qs = qs.defer('keywords', 'error_message')
+        qs = qs.defer('keywords')
 
         if not request.user.is_superuser:
             qs = qs.filter(owner=request.user)
@@ -150,14 +156,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
     autopost_settings_link.short_description = _("Автопостинг")
 
     def progress_display(self, obj):
-        cache_key = f"task_progress_{obj.id}_{obj.processed_urls}_{obj.total_urls}"
-        display = cache.get(cache_key)
-
-        if display is None:
-            display = f"{obj.processed_urls}/{obj.total_urls}"
-            cache.set(cache_key, display, timeout=60)
-
-        return display
+        return f"{obj.processed_urls}/{obj.total_urls}"
     progress_display.short_description = _("Собрано/Найдено пинов")
 
     def start_tasks(self, request, queryset):
@@ -171,27 +170,7 @@ class ParseTaskAdmin(admin.ModelAdmin):
     start_tasks.short_description = _("▶️ Запустить выбранные задания")
 
     def stop_task(self, request, queryset):
-        stopped = 0
-        for task in queryset:
-            if task.status in (
-                TaskStatus.RUNNING,
-                TaskStatus.WAITING_UNIQUENESS,
-                TaskStatus.UNIQUENESS,
-            ):
-                if task.status == TaskStatus.RUNNING:
-                    cache.set(f"stop_task_{task.id}", True, timeout=3600)
-
-                if task.celery_task_id:
-                    app.control.revoke(
-                        task.celery_task_id,
-                        terminate=True,
-                        signal="SIGTERM",
-                    )
-
-                task.status = TaskStatus.STOPPED
-                task.celery_task_id = None
-                task.save(update_fields=["status", "celery_task_id"])
-                stopped += 1
+        stopped = sum(stop_parse_task(task) for task in queryset)
 
         self.message_user(request, _("Остановлено задач: %(stopped)s") % {'stopped': stopped})
     stop_task.short_description = _("⛔ Остановить выполнение выбранных заданий")
@@ -247,27 +226,16 @@ class ParseTaskAdmin(admin.ModelAdmin):
     def response_add(self, request, obj, post_url_continue=None):
         if "_save_and_run" in request.POST:
             self.start_task(request, obj)
-            return super().response_add(request, obj, post_url_continue)
-
         return super().response_add(request, obj, post_url_continue)
 
     def response_change(self, request, obj):
         if "_save_and_run" in request.POST:
             self.start_task(request, obj)
-            return super().response_change(request, obj)
-
         return super().response_change(request, obj)
 
     def start_task(self, request, task):
-        if task.status in (TaskStatus.RUNNING, TaskStatus.WAITING_UNIQUENESS, TaskStatus.UNIQUENESS):
-            return
-
-        result = run_parse_task.delay(task.id)
-
-        task.celery_task_id = result.id
-        task.status = TaskStatus.PENDING
-        task.save(update_fields=["celery_task_id", "status"])
-        self.message_user(request, _("Задание %(id)s запущено 🚀") % {'id': task.id})
+        if start_parse_task(task):
+            self.message_user(request, _("Задание %(id)s запущено 🚀") % {'id': task.id})
 
 
 @admin.register(AutoPostConfig)
@@ -314,7 +282,7 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
             "fields": ("min_interval", "max_interval", "site_url")
         }),
         (_("Настройки уникализации"), {
-            "fields": ("use_uniqueness", "groq_api_key", "groq_prompt")
+            "fields": ("use_uniqueness", "uniqueness_config")
         }),
         (_("Техническая информация"), {
             "fields": ("celery_task_id", "error_message", "created_at", "updated_at"),
@@ -396,28 +364,20 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
         return False
 
     def response_change(self, request, obj):
-        from django.shortcuts import redirect
-        from django.contrib import messages
-        from .tasks import initialize_autopost_queue
-        from .services.autopost_test_service import test_autopost_config
-
         if "_start_autopost" in request.POST:
-            if obj.status == AutoPostStatus.RUNNING:
-                messages.warning(request, _("Автопостинг уже запущен"))
-            elif not obj.webhook_token or not obj.board_name:
-                messages.error(request, _("Заполните webhook токен и название доски перед запуском"))
-            else:
-                initialize_autopost_queue.delay(obj.id)
+            try:
+                start_autopost(obj)
                 messages.success(request, _("Автопостинг запущен. Очередь создается..."))
+            except AutoPostError as e:
+                messages.warning(request, str(e))
             return redirect('admin:tasks_autopostconfig_change', obj.id)
 
         if "_stop_autopost" in request.POST:
-            if obj.status == AutoPostStatus.RUNNING:
-                obj.status = AutoPostStatus.PAUSED
-                obj.save(update_fields=['status'])
+            try:
+                stop_autopost(obj)
                 messages.success(request, _("Автопостинг остановлен"))
-            else:
-                messages.warning(request, _("Автопостинг не запущен"))
+            except AutoPostError as e:
+                messages.warning(request, str(e))
             return redirect('admin:tasks_autopostconfig_change', obj.id)
 
         if "_test_autopost" in request.POST:
@@ -461,39 +421,86 @@ class AutoPostConfigAdmin(admin.ModelAdmin):
         return super().response_change(request, obj)
 
     def save_model(self, request, obj, form, change):
-        if change:
-            old_obj = AutoPostConfig.objects.get(pk=obj.pk)
-            super().save_model(request, obj, form, change)
+        intervals_changed = change and {"min_interval", "max_interval"} & set(form.changed_data)
+        super().save_model(request, obj, form, change)
 
-            if old_obj.min_interval != obj.min_interval or old_obj.max_interval != obj.max_interval:
-                from apps.tasks.models import AutoPostQueue, PostQueueStatus
-                from django.utils import timezone
-                import random
-                from datetime import timedelta
+        if intervals_changed:
+            count = reschedule_pending(obj)
+            if count:
+                messages.info(request, _("Пересчитано расписание для %(count)s пинов с новыми интервалами") % {'count': count})
 
-                pending_items = AutoPostQueue.objects.filter(
-                    config=obj,
-                    status=PostQueueStatus.PENDING
-                ).order_by('scheduled_at')
 
-                if pending_items.exists():
-                    current_time = timezone.now()
-                    prev_time = current_time
+class ChangeModelActionForm(ActionForm):
+    new_model = forms.CharField(
+        label=_("Новая модель"),
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": "qwen/qwen3.6-27b", "size": 30}),
+    )
 
-                    for idx, item in enumerate(pending_items):
-                        if idx == 0:
-                            item.scheduled_at = max(item.scheduled_at, current_time)
-                            prev_time = item.scheduled_at
-                        else:
-                            delay_minutes = random.randint(obj.min_interval, obj.max_interval)
-                            item.scheduled_at = prev_time + timedelta(minutes=delay_minutes)
-                            prev_time = item.scheduled_at
 
-                        item.save(update_fields=['scheduled_at'])
+@admin.register(AutoPostUniquenessConfig)
+class AutoPostUniquenessConfigAdmin(admin.ModelAdmin):
+    action_form = ChangeModelActionForm
+    list_display = ('id', 'name', 'is_active', 'model', 'updated_at')
+    list_display_links = ('id', 'name')
+    list_editable = ('is_active',)
+    list_filter = ('is_active',)
+    search_fields = ('name', 'model')
+    readonly_fields = ('created_at', 'updated_at')
+    actions = ['change_model', 'test_config']
 
-                    messages.info(request, _("Пересчитано расписание для %(count)s пинов с новыми интервалами") % {'count': pending_items.count()})
-        else:
-            super().save_model(request, obj, form, change)
+    fieldsets = (
+        (_("Основное"), {
+            "fields": ("name", "is_active")
+        }),
+        (_("Groq"), {
+            "fields": ("api_key", "model", "prompt")
+        }),
+        (_("Даты"), {
+            "fields": ("created_at", "updated_at"),
+            "classes": ("collapse",),
+        }),
+    )
+
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
+    def changelist_view(self, request, extra_context=None):
+        # Зміна моделі без вибраних рядків застосовується до всіх конфігів
+        if request.method == "POST" and request.POST.get("action") == "change_model"                 and not request.POST.getlist(ACTION_CHECKBOX_NAME):
+            post = request.POST.copy()
+            post.setlist(ACTION_CHECKBOX_NAME, [str(pk) for pk in AutoPostUniquenessConfig.objects.values_list("pk", flat=True)])
+            request.POST = post
+        return super().changelist_view(request, extra_context)
+
+    @admin.action(description=_("🔁 Изменить модель (выбранные, или все, если ничего не выбрано)"))
+    def change_model(self, request, queryset):
+        new_model = request.POST.get("new_model", "").strip()
+        if not new_model:
+            messages.error(request, _("Укажите новую модель в поле «Новая модель» рядом с действием"))
+            return
+
+        updated = queryset.update(model=new_model, updated_at=timezone.now())
+        messages.success(request, _("Модель «%(model)s» установлена для %(count)s конфигов") % {
+            'model': new_model, 'count': updated,
+        })
+
+    @admin.action(description=_("🧪 Проверить подключение (тестовый запрос)"))
+    def test_config(self, request, queryset):
+        for config in queryset:
+            service = AutoPostUniquenessService(config)
+            result = service.uniquify(
+                title="Cozy autumn living room ideas",
+                description="Warm colors, soft blankets and candles for a cozy home.",
+            )
+            if result:
+                messages.success(request, _("%(name)s: работает. Пример: «%(title)s»") % {
+                    'name': config.name, 'title': result["title"],
+                })
+            else:
+                messages.error(request, _("%(name)s: ошибка — %(error)s") % {
+                    'name': config.name, 'error': service.last_error,
+                })
 
 
 @admin.register(AutoPostQueue)

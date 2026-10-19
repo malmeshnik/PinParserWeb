@@ -41,8 +41,6 @@ class BrowserFactory:
         current_proxy = self.proxy
 
         if current_proxy:
-            proxy_url = None
-
             if current_proxy.is_9proxy:
                 nine_proxy = NineProxyService()
 
@@ -59,18 +57,15 @@ class BrowserFactory:
                 )
 
                 if proxy:
-                    proxy_url = f"http://{proxy.host}:{proxy.port}"
                     launch_kwargs["proxy"] = {
-                        "server": proxy_url,
+                        "server": f"http://{proxy.host}:{proxy.port}",
                     }
 
-                    logger.info(f"Using 9Proxy: {proxy_url}")
+                    logger.info(f"Using 9Proxy: {proxy.host}:{proxy.port}")
 
             else:
-                proxy_url = f"http://{current_proxy.host}:{current_proxy.port}"
-
                 launch_kwargs["proxy"] = {
-                    "server": proxy_url,
+                    "server": f"http://{current_proxy.host}:{current_proxy.port}",
                     "username": current_proxy.username,
                     "password": current_proxy.password,
                 }
@@ -107,7 +102,9 @@ class BrowserFactory:
             """)
 
         if self.account.cookies:
-            await context.add_cookies(self.account.cookies)
+            from apps.accounts.cookies import normalize_cookies
+            # Нормалізуємо і тут — для акаунтів, збережених до появи нормалізації
+            await context.add_cookies(normalize_cookies(self.account.cookies))
 
         page = await context.new_page()
         await page.goto("https://www.pinterest.com/", timeout=30000)

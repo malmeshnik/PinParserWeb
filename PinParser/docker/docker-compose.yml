@@ -1,57 +1,97 @@
+# Запуск (з папки PinParser/docker):
+#   docker compose up -d --build
+# Адмінка: http://localhost:8000/admin/ (на сервері — http://<сервер>:8000/admin/)
+
+x-app: &app
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+  image: pinparser:latest
+  env_file:
+    - ../.env
+  environment:
+    DJANGO_SETTINGS_MODULE: config.settings.prod
+    DB_HOST: db
+    DB_PORT: "5432"
+    REDIS_URL: redis://redis:6379/0
+    REDIS_CACHE_URL: redis://redis:6379/1
+    # Мікросервіс публікації пінів працює на цій же машині (не в Docker) на localhost:80.
+    # У контейнері localhost — це сам контейнер, тому з'єднуємось з машиною через host.docker.internal,
+    # а заголовок Host лишаємо localhost — для мікросервісу запит виглядає так само, як з машини
+    AUTOPOST_API_URL: http://host.docker.internal:80
+    AUTOPOST_API_HOST: localhost
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  volumes:
+    - ../media:/app/media
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: always
+
 services:
+  # Postgres і Redis доступні лише контейнерам цієї збірки, портів назовні немає
   db:
     image: postgres:15-alpine
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     env_file:
       - ../.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: always
 
-  # redis:
-  #   image: redis:7-alpine
-  #   ports:
-  #     - "6379:6379"
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: always
 
-  # web:
-  #   build:
-  #     context: ..
-  #     dockerfile: docker/django.DockerFile
-  #   command: python manage.py runserver 0.0.0.0:8000
-  #   volumes:
-  #     - ..:/app
-  #   ports:
-  #     - "8000:8000"
-  #   environment:
-  #     - DEBUG=True
-  #     - DB_HOST=db
-  #     - REDIS_URL=redis://127.0.0.1:6379/0
-  #   depends_on:
-  #     - db
-  #   env_file:
-  #     - ../.env
-  #   network_mode: host
+  web:
+    <<: *app
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             python manage.py runserver 0.0.0.0:8000 --noreload"
+    ports:
+      - "8000:8000"   # адмінка; щоб змінити порт на машині — "8080:8000"
 
+  # Парсинг (Playwright + Chromium)
+  worker-parser:
+    <<: *app
+    command: celery -A config worker -Q parser -l info --concurrency=2 -n parser@%h
+    shm_size: 1gb
 
-  # worker:
-  #   build:
-  #     context: ..
-  #     dockerfile: docker/worker.DockerFile
-  #   command: celery -A config worker -l info
-  #   volumes:
-  #     - ..:/app
-  #   environment:
-  #     - DEBUG=True
-  #     - DB_HOST=db
-  #     - REDIS_URL=redis://127.0.0.1:6379/0
-  #   depends_on:
-  #     - db
-  #   env_file:
-  #     - ../.env
-  #   network_mode: host
-      
+  # Уникалізація через AI
+  worker-ai:
+    <<: *app
+    command: celery -A config worker -Q ai -l info --concurrency=2 -n ai@%h
 
+  # Експорт в Excel і очистка логів
+  worker-export:
+    <<: *app
+    command: celery -A config worker -Q export -l info --concurrency=1 -n export@%h
+
+  # Автопостинг: окремий воркер на 1 ядро, щоб не займати чергу парсингу
+  worker-autopost:
+    <<: *app
+    command: celery -A config worker -Q autopost -l info --concurrency=1 -n autopost@%h
+    cpus: 1.0
+
+  beat:
+    <<: *app
+    command: celery -A config beat -l info --schedule /tmp/celerybeat-schedule
 
 volumes:
   postgres_data:
+  redis_data:

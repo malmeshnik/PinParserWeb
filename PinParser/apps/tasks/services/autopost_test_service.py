@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from apps.tasks.models import AutoPostConfig, AutoPostQueue, PostQueueStatus
 from apps.results.models import PinResult
-from apps.tasks.services.groq_uniqueness_service import GroqUniquenessService
+from apps.tasks.services.autopost_service import build_post_payload, publish
 
 
 def test_autopost_config(config: AutoPostConfig) -> dict:
@@ -52,61 +52,12 @@ def test_autopost_config(config: AutoPostConfig) -> dict:
 
         logger.info(f"[AUTOPOST TEST] Використовуємо пін #{pin.id} з результатів")
 
-    # Обробляємо пін
-    final_title = pin.title
-    final_description = pin.description
-    final_slug_url = pending_queue_item.config.site_url
-
-    if config.use_uniqueness and config.groq_api_key and final_title:
-        groq_service = GroqUniquenessService(
-            api_key=config.groq_api_key,
-            prompt_template=config.groq_prompt
-        )
-
-        logger.info(f"[AUTOPOST TEST] Унікалізація піна #{pin.id}")
-        unique_data = groq_service.uniquify(
-            title=final_title,
-            description=final_description,
-            alt_text=pin.alt_text,
-            annotation=pin.annotation,
-        )
-
-        if unique_data:
-            final_title = unique_data["title"]
-            final_description = unique_data["description"]
-
-            slug_text = GroqUniquenessService.generate_slug(final_title)
-            final_slug_url = f"{config.site_url}{slug_text}"
-        else:
-            logger.warning(f"[AUTOPOST TEST] Не вдалося унікалізувати пін #{pin.id}")
-            slug_text = GroqUniquenessService.generate_slug(final_title)
-            final_slug_url = f"{config.site_url}{slug_text}"
-    else:
-        if final_title:
-            slug_text = GroqUniquenessService.generate_slug(final_title)
-            final_slug_url = f"{config.site_url}{slug_text}"
-
-    image_url = pin.image_url
-
-    # Відправляємо на webhook
-    payload = {
-        "title": final_title,
-        "description": final_description,
-        "link": final_slug_url,
-        "image_url": image_url,
-        "board_name": config.board_name,
-    }
-
-    webhook_url = f"http://localhost:80/api/v1/publish/{config.webhook_token}/"
+    payload = build_post_payload(config, pin)
+    final_title = payload["title"]
 
     try:
         # Додаємо параметр wait=true для синхронної відповіді
-        response = requests.post(
-            webhook_url,
-            json=payload,
-            params={'wait': 'true', 'timeout': '60'},
-            timeout=65,  # Трохи більше ніж timeout на сервері
-        )
+        response = publish(config, payload, timeout=65)  # Трохи більше ніж timeout на сервері
 
         response_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
 
@@ -147,7 +98,9 @@ def test_autopost_config(config: AutoPostConfig) -> dict:
             error_message = response_data.get('message', response.text[:500])
             error_type = response_data.get('error', 'unknown_error')
 
-            logger.error(f"[AUTOPOST TEST] Помилка відправки піна #{pin.id} | HTTP {response.status_code}: {error_type}")
+            logger.bind(autopost_config_id=config.id, pin_id=pin.id, task_id=config.task_id).error(
+                f"[AUTOPOST TEST] Помилка відправки піна #{pin.id} | HTTP {response.status_code}: {error_type}: {error_message}"
+            )
             return {
                 "success": False,
                 "pin_id": pin.id,

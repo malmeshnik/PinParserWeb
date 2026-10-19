@@ -1,9 +1,7 @@
 import os
 import time
 import random
-import hashlib
 from typing import Optional
-from io import BytesIO
 
 import requests
 from django.core.files.base import ContentFile

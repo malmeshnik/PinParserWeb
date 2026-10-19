@@ -1,6 +1,6 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-from apps.proxies.models import Proxy
 
 
 # Create your models here.
@@ -64,15 +64,25 @@ class PinterestAccount(models.Model):
     def __str__(self):
         return _("Аккаунт №%(id)s - %(name)s") % {"id": self.id, "name": self.name}
 
+    def clean(self):
+        from .cookies import normalize_cookies, CookieFormatError
+        try:
+            self.cookies = normalize_cookies(self.cookies)
+        except CookieFormatError as e:
+            raise ValidationError({"cookies": str(e)})
+
+    def save(self, *args, **kwargs):
+        # Куки завжди зберігаються у форматі Playwright, звідки б не прийшли (адмінка, API, shell)
+        update_fields = kwargs.get("update_fields")
+        if update_fields is None or "cookies" in update_fields:
+            from .cookies import normalize_cookies
+            self.cookies = normalize_cookies(self.cookies)
+        super().save(*args, **kwargs)
+
     def register_fail(self):
         self.fail_count += 1
         if self.fail_count >= 3:
             self.status = AccountStatus.ERROR
-        self.save(update_fields=["fail_count", "status"])
-
-    def reset_fail(self):
-        self.fail_count = 0
-        self.status = AccountStatus.ACTIVE
         self.save(update_fields=["fail_count", "status"])
 
     def rotate_proxy(self):

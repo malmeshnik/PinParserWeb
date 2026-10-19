@@ -1,14 +1,10 @@
 import random
-from django.core.cache import cache
 import time
 from typing import Optional
-from asgiref.sync import sync_to_async
 
 import requests
 from loguru import logger
 from requests import Response
-
-from apps.proxies.models import Proxy
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -37,7 +33,6 @@ class PinFetcher:
         self._prepare_session()
 
     def fetch(self, pin_url: str) -> Optional[str]:
-        last_response = None
         for attempt in range(1, self.max_retries + 1):
             try:
 
@@ -46,7 +41,6 @@ class PinFetcher:
                     timeout=self.timeout,
                     allow_redirects=True,
                 )
-                last_response = response
 
                 if self._is_valid_response(response):
                     return response.text
@@ -68,20 +62,13 @@ class PinFetcher:
 
             time.sleep(random.uniform(*self.delay_range))
 
-        error_msg = f"[PIN FETCH] Failed after retries | {pin_url}"
-        logger.error(error_msg)
-        self._log_to_db(error_msg)
+        logger.bind(
+            task_id=self.task.id if self.task else None,
+            account_id=self.account.id if self.account else None,
+            url=pin_url,
+        ).error(f"[PIN FETCH] Failed after retries | {pin_url}")
 
         return None
-
-    def _log_to_db(self, message):
-        if self.task:
-            from apps.logs.models import ErrorLog
-            ErrorLog.objects.create(
-                task=self.task,
-                account=self.account,
-                message=message[:5000]
-            )
 
     def _rotate_everything(self):
         new_ua = random.choice(USER_AGENTS)
@@ -117,6 +104,3 @@ class PinFetcher:
             return True
 
         return False
-        
-    def _should_stop(self) -> bool:
-        return cache.get(f"stop_task_{self.task.id}") is True

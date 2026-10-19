@@ -1,13 +1,13 @@
 import asyncio
 import random
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote_plus
 from loguru import logger
 from playwright.async_api import Error as PlaywrightError
-from django.core.cache import cache
 from django.db.models import F
 
 from workers.browser_factory import BrowserFactory
 from apps.tasks.models import ParseTask
+from apps.tasks.services.task_control import is_stop_requested
 
 
 SCROLL_PAUSE_RANGE = (1.2, 2.5)
@@ -111,7 +111,7 @@ Org: {data.get('org')}
 
             logger.info(f"[{keyword}] starting")
 
-            url = f"https://www.pinterest.com/search/pins/?q={keyword}"
+            url = f"https://www.pinterest.com/search/pins/?q={quote_plus(keyword)}"
 
             response = await page.goto(
                 url,
@@ -127,7 +127,6 @@ Org: {data.get('org')}
             last_height = await self._get_height(page)
             same_height = 0
             scrolls = 0
-            first_scroll_done = False
 
             while scrolls < MAX_SCROLLS_PER_PAGE:
 
@@ -235,5 +234,4 @@ Org: {data.get('org')}
         return None
 
     def _should_stop(self):
-
-        return cache.get(f"stop_task_{self.task.id}") is True
+        return is_stop_requested(self.task.id)
