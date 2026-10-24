@@ -7,12 +7,27 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.core.cache import cache
 from django.db import connection
-from openai import OpenAI, RateLimitError, APIError, AuthenticationError
+from openai import (
+    OpenAI,
+    RateLimitError,
+    APIError,
+    AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    PermissionDeniedError,
+)
 from loguru import logger
 
-from apps.uniqueness.models import UniquenessConfig
+from apps.uniqueness.models import UniquenessConfig, ModelProvider
 from apps.results.models import PinResult
 from apps.tasks.models import ParseTask
+
+# Reasoning-моделі витрачають частину completion-токенів на міркування,
+# тому без запасу відповідь може повернутися порожньою
+REASONING_TOKENS_HEADROOM = 2000
+
+# Скільки разів можна підлаштувати параметри запиту під модель за один виклик
+MAX_PARAM_ADAPTATIONS = 3
 
 
 class AIUniquenessService:
@@ -32,6 +47,14 @@ class AIUniquenessService:
         self.lock = threading.Lock()
 
         self.stop_event = threading.Event()
+
+        # Параметри спільні для всіх потоків: якщо модель відхилить якийсь параметр,
+        # виправлення одразу підхоплять наступні запити
+        self.request_params = self._build_request_params()
+        self.params_lock = threading.Lock()
+
+        # Помилка, через яку немає сенсу продовжувати (невірний ключ, модель недоступна)
+        self.fatal_error = None
 
         # Tracking statistics
         self.stats = {
@@ -65,6 +88,13 @@ class AIUniquenessService:
                     logger.info(f"[UNIQUENESS] Stopping by user request. Stats: {self.stats}")
 
                     self.stop_event.set()
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    return
+
+                if self.fatal_error:
+                    logger.error(
+                        f"[UNIQUENESS] Aborting task {self.task.id}: {self.fatal_error}. Stats: {self.stats}"
+                    )
                     executor.shutdown(wait=False, cancel_futures=True)
                     return
 
@@ -192,8 +222,11 @@ class AIUniquenessService:
         """Call API with exponential backoff and proper error handling."""
         backoff = 2.0  # Start with 2 seconds
         max_retries = 5
+        attempt = 0
+        adaptations = 0
 
-        for attempt in range(1, max_retries + 1):
+        while attempt < max_retries:
+            attempt += 1
 
             if self.stop_event.is_set():
                 return ""
@@ -201,37 +234,48 @@ class AIUniquenessService:
             self._throttle()
 
             try:
-                max_tokens_value = (
-                    self.config.max_tokens_title
-                    + self.config.max_tokens_description
+                with self.params_lock:
+                    params = dict(self.request_params)
+
+                resp = self.client.chat.completions.create(
+                    model=self.config.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    **params,
                 )
 
-                # GPT-5, GPT-4.1, and GPT-4o models use max_completion_tokens
-                # Older models and Qwen use max_tokens
-                if self.config.model.startswith(('gpt-5', 'gpt-4.1', 'gpt-4o')):
-                    resp = self.client.chat.completions.create(
-                        model=self.config.model,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=self.config.temperature,
-                        max_completion_tokens=max_tokens_value,
+                choice = resp.choices[0]
+                content = (choice.message.content or "").strip()
+                if not content:
+                    logger.warning(
+                        f"[UNIQUENESS] Pin {pin_id} - Empty response "
+                        f"(finish_reason={choice.finish_reason}, model={self.config.model})"
                     )
-                else:
-                    resp = self.client.chat.completions.create(
-                        model=self.config.model,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=self.config.temperature,
-                        max_tokens=max_tokens_value,
-                    )
-
-                return resp.choices[0].message.content.strip()
+                return content
 
             except AuthenticationError as e:
-                # 403 Forbidden - API key issue, don't retry
+                # 401 - API key issue, all other pins will fail too
                 self.stats["auth_errors"] += 1
-                logger.error(
-                    f"[UNIQUENESS] Pin {pin_id} - Authentication error (403): {e}\n"
-                    f"Check API key for provider: {self.config.model_provider}"
+                self._abort(
+                    f"Помилка авторизації API ({self.config.model_provider}), перевірте ключ: {e}"
                 )
+                return ""
+
+            except (NotFoundError, PermissionDeniedError) as e:
+                # Model doesn't exist or isn't available for this API key
+                self.stats["api_errors"] += 1
+                self._abort(f"Модель '{self.config.model}' недоступна: {e}")
+                return ""
+
+            except BadRequestError as e:
+                if adaptations < MAX_PARAM_ADAPTATIONS and self._adapt_params(e):
+                    adaptations += 1
+                    # The request was rejected before generation, don't count it as an attempt
+                    attempt -= 1
+                    continue
+
+                # Other 400 errors won't be fixed by retrying the same request
+                self.stats["api_errors"] += 1
+                logger.error(f"[UNIQUENESS] Pin {pin_id} - Bad request (400): {e}")
                 return ""
 
             except RateLimitError as e:
@@ -283,6 +327,73 @@ class AIUniquenessService:
                     return ""
 
         return ""
+
+    def _build_request_params(self) -> dict:
+        """Параметри запиту залежно від провайдера та сімейства моделі."""
+        max_tokens_value = (
+            self.config.max_tokens_title
+            + self.config.max_tokens_description
+        )
+
+        if self.config.is_reasoning_model:
+            # Reasoning models accept only the default temperature
+            return {
+                "max_completion_tokens": max_tokens_value + REASONING_TOKENS_HEADROOM,
+                "reasoning_effort": "low",
+            }
+
+        if self.config.model_provider == ModelProvider.OPENAI:
+            # Current OpenAI chat models use max_completion_tokens
+            return {
+                "temperature": self.config.temperature,
+                "max_completion_tokens": max_tokens_value,
+            }
+
+        # Qwen and OmniRoute use max_tokens
+        return {
+            "temperature": self.config.temperature,
+            "max_tokens": max_tokens_value,
+        }
+
+    def _adapt_params(self, error: BadRequestError) -> bool:
+        """Підлаштовує параметри під модель, якщо вона відхилила один з них.
+
+        Returns True, якщо запит варто повторити з оновленими параметрами.
+        """
+        param = error.param
+        swaps = {
+            "max_tokens": "max_completion_tokens",
+            "max_completion_tokens": "max_tokens",
+        }
+        removable = ("temperature", "reasoning_effort")
+
+        if param not in swaps and param not in removable:
+            return False
+
+        with self.params_lock:
+            if param not in self.request_params:
+                # Another thread already adapted this param
+                return True
+
+            if param in swaps:
+                self.request_params[swaps[param]] = self.request_params.pop(param)
+            else:
+                self.request_params.pop(param)
+
+            logger.warning(
+                f"[UNIQUENESS] Model {self.config.model} rejected '{param}', "
+                f"using params: {self.request_params}"
+            )
+
+        return True
+
+    def _abort(self, message: str):
+        """Зупиняє обробку всіх пінів через помилку, яку не виправити повторами."""
+        with self.params_lock:
+            if self.fatal_error is None:
+                self.fatal_error = message
+                logger.error(f"[UNIQUENESS] Task {self.task.id} fatal error: {message}")
+        self.stop_event.set()
 
     def _throttle(self):
         """Throttle requests to stay within rate limits."""

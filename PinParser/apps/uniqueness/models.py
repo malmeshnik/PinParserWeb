@@ -3,9 +3,28 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+DEFAULT_OPENAI_MODEL = "gpt-4.1-nano-2025-04-14"
+
+# Підказки для поля моделі в адмінці; можна ввести будь-яку іншу модель OpenAI
+OPENAI_MODEL_SUGGESTIONS = [
+    "gpt-4.1-nano-2025-04-14",
+    "gpt-4.1-nano",
+    "gpt-4.1-mini",
+    "gpt-4.1",
+    "gpt-4o-mini",
+    "gpt-4o",
+    "gpt-5-nano",
+    "gpt-5-mini",
+    "gpt-5",
+]
+
+# Reasoning-моделі: не підтримують довільну temperature і витрачають токени на міркування
+REASONING_MODEL_PREFIXES = ("o1", "o3", "o4", "gpt-5")
+
+
 # Create your models here.
 class ModelProvider(models.TextChoices):
-    OPENAI = "openai", _("OpenAI (gpt-5-nano) - 450 req/min")
+    OPENAI = "openai", _("OpenAI - 450 req/min")
     DASHSCOPE = "dashscope", _("DashScope (qwen3.7-flash) - 15000 req/min")
     OMNIROUTE = "omniroute", _("OmniRoute")
 
@@ -24,6 +43,18 @@ class UniquenessConfig(models.Model):
         choices=ModelProvider.choices,
         default=ModelProvider.OPENAI,
         verbose_name=_("Провайдер модели"),
+    )
+
+    openai_model = models.CharField(
+        max_length=255,
+        blank=True,
+        default=DEFAULT_OPENAI_MODEL,
+        verbose_name=_("Модель OpenAI"),
+        help_text=_(
+            "Лише для OpenAI, наприклад gpt-4.1-mini або gpt-5-mini. "
+            "Якщо порожньо — використовується gpt-4.1-nano-2025-04-14. "
+            "Для reasoning-моделей (gpt-5, o-серія) temperature ігнорується."
+        ),
     )
 
     omniroute_model = models.CharField(
@@ -112,7 +143,14 @@ class UniquenessConfig(models.Model):
             return self.omniroute_model.strip() or settings.OMNIROUTE_MODEL
         if self.model_provider == ModelProvider.DASHSCOPE:
             return "qwen3.7-flash"
-        return "gpt-4.1-nano-2025-04-14"
+        return self.openai_model.strip() or DEFAULT_OPENAI_MODEL
+
+    @property
+    def is_reasoning_model(self):
+        return (
+            self.model_provider == ModelProvider.OPENAI
+            and self.model.startswith(REASONING_MODEL_PREFIXES)
+        )
 
     @property
     def base_url(self):

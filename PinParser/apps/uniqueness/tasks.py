@@ -38,6 +38,11 @@ def run_uniqueness(self, task_id: int, mark_done: bool = True):
 
         service.process_queryset(qs)
 
+        # Wrong key or unavailable model: retrying won't help, the rest of the chain is skipped
+        if service.fatal_error:
+            task.mark_failed(service.fatal_error)
+            return
+
         # Check if there are failed pins and schedule retry
         if service.failed_pin_ids:
             failed_count = len(service.failed_pin_ids)
@@ -91,6 +96,10 @@ def retry_uniqueness(self, task_id: int, pin_ids: list[int]):
 
         service = AIUniquenessService(task, config)
         service.process_queryset(qs)
+
+        if service.fatal_error:
+            task.mark_failed(service.fatal_error)
+            return
 
         # Final check - if still have failures, log them
         if service.failed_pin_ids:
