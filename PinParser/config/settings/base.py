@@ -116,6 +116,10 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Завантаження фото пінів на сервер під час парсингу (за замовчуванням вимкнено,
+# зберігається лише image_url)
+SAVE_PIN_IMAGES = env.bool("SAVE_PIN_IMAGES", default=False)
+
 CELERY_BROKER_URL = env("REDIS_URL")
 CELERY_RESULT_BACKEND = env("REDIS_URL")
 CELERY_ACCEPT_CONTENT = ["json"]

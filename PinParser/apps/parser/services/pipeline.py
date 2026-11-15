@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 
 from loguru import logger
+from django.conf import settings
 from django.utils import timezone
 from django.db.models import F
 from asgiref.sync import sync_to_async
@@ -254,7 +255,7 @@ class PinterestParsePipeline:
             processed_urls=F("processed_urls") + 1
         )
 
-        if image_url and pin_id:
+        if settings.SAVE_PIN_IMAGES and image_url and pin_id:
             try:
                 image_file = self.image_downloader.download_image(image_url, pin_id)
                 if image_file:
