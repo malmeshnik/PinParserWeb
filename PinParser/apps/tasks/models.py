@@ -240,6 +240,11 @@ def get_default_autopost_uniqueness_config():
     return config.id if config else None
 
 
+def normalize_site_url(site_url: str) -> str:
+    """Гарантує, що базовий URL сайту закінчується рівно на один '?'."""
+    return (site_url or "").strip().rstrip("?") + "?"
+
+
 class AutoPostConfig(models.Model):
     task = models.OneToOneField(
         ParseTask,
@@ -352,6 +357,11 @@ class AutoPostConfig(models.Model):
             raise ValidationError({
                 "max_interval": _("Максимальный интервал должен быть не меньше минимального"),
             })
+
+    def save(self, *args, **kwargs):
+        if self.site_url:
+            self.site_url = normalize_site_url(self.site_url)
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = _("Настройка автопостинга")

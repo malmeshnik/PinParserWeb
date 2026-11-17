@@ -1,4 +1,5 @@
 import random
+import re
 from datetime import timedelta
 
 import requests
@@ -6,8 +7,16 @@ from django.conf import settings
 from django.utils import timezone
 from loguru import logger
 
-from apps.tasks.models import AutoPostConfig, AutoPostQueue, AutoPostStatus, PostQueueStatus
+from apps.tasks.models import (
+    AutoPostConfig,
+    AutoPostQueue,
+    AutoPostStatus,
+    PostQueueStatus,
+    normalize_site_url,
+)
 from apps.tasks.services.autopost_uniqueness_service import AutoPostUniquenessService
+
+_SLUG_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
 class AutoPostError(Exception):
@@ -36,27 +45,31 @@ def stop_autopost(config: AutoPostConfig):
 
 
 def build_post_link(site_url: str, title: str | None) -> str:
-    """Будує посилання поста: site_url + '?' + slug.
+    """Будує посилання поста строго у форматі: <site_url що закінчується на '?'><slug>.
 
-    Якщо site_url не закінчується на '?' (або '&' / '=' для URL з параметрами),
-    роздільник додається автоматично.
+    site_url завжди нормалізується до закінчення на '?', незалежно від того,
+    що збережено в конфігу.
     """
+    base = normalize_site_url(site_url)
     slug = AutoPostUniquenessService.generate_slug(title) if title else ""
-    if not slug:
-        return site_url
+    slug = slug.strip("-")
 
-    if site_url.endswith(("?", "&", "=")):
-        return f"{site_url}{slug}"
-    if "?" in site_url:
-        return f"{site_url}&{slug}"
-    return f"{site_url}?{slug}"
+    link = f"{base}{slug}"
+
+    # Фінальна перевірка: рівно один '?' між сайтом і slug, slug без сміття
+    if not link.startswith(base) or not base.endswith("?") or (slug and not _SLUG_RE.fullmatch(slug)):
+        raise AutoPostError(f"Некоректне посилання поста: {link!r}")
+    if not slug:
+        logger.warning(f"[AUTOPOST] Порожній slug для заголовка {title!r}, посилання: {link}")
+
+    return link
 
 
 def build_post_payload(config: AutoPostConfig, pin, save_to_pin: bool = False) -> dict:
     """Готує дані для публікації піна (з AI-унікалізацією, якщо увімкнено)."""
     title = pin.title
     description = pin.description
-    link = config.site_url
+    link = normalize_site_url(config.site_url)
 
     uniqueness_config = config.uniqueness_config if config.use_uniqueness else None
 
