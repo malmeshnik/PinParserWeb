@@ -35,6 +35,23 @@ def stop_autopost(config: AutoPostConfig):
     config.save(update_fields=["status"])
 
 
+def build_post_link(site_url: str, title: str | None) -> str:
+    """Будує посилання поста: site_url + '?' + slug.
+
+    Якщо site_url не закінчується на '?' (або '&' / '=' для URL з параметрами),
+    роздільник додається автоматично.
+    """
+    slug = AutoPostUniquenessService.generate_slug(title) if title else ""
+    if not slug:
+        return site_url
+
+    if site_url.endswith(("?", "&", "=")):
+        return f"{site_url}{slug}"
+    if "?" in site_url:
+        return f"{site_url}&{slug}"
+    return f"{site_url}?{slug}"
+
+
 def build_post_payload(config: AutoPostConfig, pin, save_to_pin: bool = False) -> dict:
     """Готує дані для публікації піна (з AI-унікалізацією, якщо увімкнено)."""
     title = pin.title
@@ -60,11 +77,11 @@ def build_post_payload(config: AutoPostConfig, pin, save_to_pin: bool = False) -
         if unique_data and save_to_pin:
             pin.utitle = title
             pin.udescription = description
-            pin.slug_url = f"{config.site_url}{AutoPostUniquenessService.generate_slug(title)}"
+            pin.slug_url = build_post_link(config.site_url, title)
             pin.save(update_fields=["utitle", "udescription", "slug_url"])
 
     if title:
-        link = f"{config.site_url}{AutoPostUniquenessService.generate_slug(title)}"
+        link = build_post_link(config.site_url, title)
 
     # Використовуємо оригінальне посилання Pinterest на фото,
     # бо Pinterest не приймає посилання без HTTPS та домену
