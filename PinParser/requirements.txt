@@ -4,6 +4,8 @@ psycopg2-binary
 djangorestframework
 celery
 redis
+# kombu.transport.redis імпортує packaging, але не оголошує його залежністю
+packaging
 loguru
 requests
 beautifulsoup4
